@@ -195,7 +195,27 @@ set -v
 
 # Unset some variables.
 unset BUCKET_NAME KEY_ENCRYPTION_PASSWORD BKEY_ID BAPP_KEY KEY_PASSWORD
-    
+
+# Let's create neccessary files for signing
+# If keys.mk does not exist, create it.
+if [ ! -f vendor/lineage-priv/keys/keys.mk ]; then
+  echo "PRODUCT_DEFAULT_DEV_CERTIFICATE := vendor/lineage-priv/keys/releasekey" > vendor/lineage-priv/keys/keys.mk
+fi
+
+# If BUILD.bazel does not exist, create it.
+if [ ! -f vendor/lineage-priv/keys/BUILD.bazel ]; then
+cat <<EOF > vendor/lineage-priv/keys/BUILD.bazel
+filegroup(
+    name = "android_certificate_directory",
+    srcs = glob([
+        "*.pk8",
+        "*.pem",
+    ]),
+    visibility = ["//visibility:public"],
+)
+EOF
+fi
+
 # Wait a short time to ensure all processes are settled.
 sleep 15
 
