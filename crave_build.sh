@@ -69,11 +69,7 @@ cleanup_self () {
     rm -rf vendor/pixel
     rm -rf packages/apps/FaceUnlock
 
-    rm -rf /tmp/android-certs*
-    rm -rf vendor/lineage-priv/keys
     rm -rf vendor/lineage-priv
-    rm -rf priv-keys
-
     rm -rf .config/b2/account_info
     rm -rf /home/admin/venv
 
