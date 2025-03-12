@@ -184,19 +184,19 @@ git clone https://github.com/gopaldhanve2003/android_vendor_extra --depth 1 -b m
 grep -vE "BKEY_ID|BUCKET_NAME|KEY_ENCRYPTION_PASSWORD|BAPP_KEY|KEY_PASSWORD|TG_TOKEN|TG_CID|NTFYSUB" /tmp/crave_bashrc > /tmp/crave_bashrc.1
 mv /tmp/crave_bashrc.1 /tmp/crave_bashrc
 
-# (Optional) Credentials & B2 storage setup commands for future use:
-#sudo apt --yes install python3-virtualenv virtualenv python3-pip-whl
-#virtualenv /home/admin/venv ; check_fail
-#set +v
-#source /home/admin/venv/bin/activate
-#set -v
-#pip install --upgrade b2 ; check_fail
-#b2 account authorize "$BKEY_ID" "$BAPP_KEY" > /dev/null 2>&1 ; check_fail
-#mkdir priv-keys
-#b2 sync "b2://$BUCKET_NAME/inline" "priv-keys" > /dev/null 2>&1 ; check_fail
-#mkdir --parents vendor/lineage-priv/keys
-#mv priv-keys/* vendor/lineage-priv/keys
-#deactivate
+# Get keys from B2Bucket for signing.
+set +v
+sudo apt update
+sudo apt --yes install python3-virtualenv virtualenv python3-pip-whl
+virtualenv /home/admin/venv ; check_fail
+source /home/admin/venv/bin/activate
+pip install --upgrade b2 ; check_fail
+b2 account authorize "$BKEY_ID" "$BAPP_KEY" > /dev/null 2>&1 ; check_fail
+mkdir -p vendor/lineage-priv/keys
+b2 sync "b2://$BUCKET_NAME/keys" vendor/lineage-priv/keys > /dev/null 2>&1 ; check_fail
+deactivate
+set -v
+
 # Unset some variables.
 unset BUCKET_NAME KEY_ENCRYPTION_PASSWORD BKEY_ID BAPP_KEY KEY_PASSWORD
     
