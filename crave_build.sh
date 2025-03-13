@@ -128,22 +128,59 @@ check_fail () {
 
 # Function to apply patches (if necessary) before building.
 apply_patches() {
-    PATCHES_PATH="$PWD/vendor/extra/patches"
-    for project_name in $(cd "$PATCHES_PATH" && echo */); do
-        project_path=$(echo "$project_name" | tr _ /)
-        cd "${ANDROID_BUILD_TOP}" || exit 1
-        cd "${project_path}" || continue
-        HEAD_COMMIT=$(git rev-parse HEAD)
-        LINEAGE_COMMIT=$(git rev-parse m/lineage-22.1)
-        if [[ "${HEAD_COMMIT}" == "${LINEAGE_COMMIT}" ]]; then
-            echo "Applying patches for project: ${project_name} on ${HEAD_COMMIT}"
-            if ! git am "${PATCHES_PATH}/${project_name}"/*.patch --no-gpg-sign; then
+    # Expect two parameters: patches path and branch name.
+    local patches_path="$1"
+    local branch="$2"
+
+    if [ -z "$patches_path" ] || [ -z "$branch" ]; then
+        echo "Usage: apply_patches <patches_path> <branch>"
+        echo "  <patches_path> - Absolute or relative path to the patches folder containing subdirectories for each project."
+        echo "  <branch>       - The Git branch to compare HEAD against before applying patches."
+        return 1
+    fi
+
+    if [ ! -d "$patches_path" ]; then
+        echo "Patches directory '$patches_path' does not exist."
+        return 1
+    fi
+
+    # Loop over each project directory in the patches path
+    for project_dir in "$patches_path"/*/; do
+        # Remove trailing slash and extract project name
+        local project_name
+        project_name=$(basename "${project_dir}")
+
+        # Convert underscores to slashes to form the repository path
+        local project_path
+        project_path=$(echo "$project_name" | tr '_' '/')
+
+        # Change to the repository top directory and then to the project path
+        cd "${ANDROID_BUILD_TOP}" || { echo "ANDROID_BUILD_TOP is not set or invalid"; return 1; }
+        cd "${project_path}" || { echo "Project path '${project_path}' not found. Skipping."; continue; }
+
+        # Get the current commit and the commit of the specified branch
+        local head_commit branch_commit
+        head_commit=$(git rev-parse HEAD)
+        branch_commit=$(git rev-parse "$branch" 2>/dev/null)
+
+        if [ $? -ne 0 ]; then
+            echo "Branch '$branch' not found in project '${project_name}'. Skipping."
+            cd "${ANDROID_BUILD_TOP}" || exit 1
+            continue
+        fi
+
+        # If HEAD matches the branch commit, apply the patches
+        if [ "$head_commit" = "$branch_commit" ]; then
+            echo "Applying patches for project: ${project_name} on commit ${head_commit}"
+            if ! git am "${patches_path}/${project_name}"/*.patch --no-gpg-sign; then
                 echo "Failed to apply patches for project: ${project_name}. Aborting patch application."
                 git am --abort &> /dev/null
             fi
         else
-            echo "Skipping project: ${project_name}, HEAD is not on m/lineage-22.1."
+            echo "Skipping project: ${project_name}, HEAD (${head_commit}) is not on branch ${branch} (${branch_commit})."
         fi
+
+        # Return to the root of the build directory for the next project
         cd "${ANDROID_BUILD_TOP}" || exit 1
     done
 }
@@ -244,7 +281,7 @@ notify "[INFO] Starting build for device: ${device} (${type} build)"
 if [[ ${WITH_GMS} == "true" ]]; then
     echo -e "\e[32m[INFO]\e[0m GMS build selected: applying patches before build..."
     notify "[INFO] GMS build selected: applying patches before build..."
-    apply_patches
+    apply_patches "$PWD/vendor/extra/patches" "m/lineage-22.1"
 fi
 
 #######################################
@@ -298,3 +335,4 @@ unset TG_TOKEN TG_CID NTFYSUB
 # Pause briefly before exiting.
 sleep 60
 exit 0
+
