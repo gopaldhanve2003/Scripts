@@ -96,6 +96,7 @@ cleanup_self () {
 
     rm -rf vendor/lineage-priv
     rm -rf .config/b2/account_info
+    rm -rf ~/.gitconfig
     rm -rf /home/admin/venv
 
     rm -f goupload.sh
@@ -386,6 +387,13 @@ fi
 echo -e "\e[32m[INFO]\e[0m Starting build for device: ${device} (${type} build)"
 notify "[INFO] Starting build for device: ${device} (${type} build)"
 
+## Set Git username and email silently (suppress output and errors)
+git config --global user.name "$NAME" > /dev/null 2>&1
+git config --global user.email "$MAIL" > /dev/null 2>&1
+
+# Unset git variables
+unset NAME MAIL
+
 # If this is a GMS build, apply the necessary patches.
 if [[ ${WITH_GMS} == "true" ]]; then
     echo -e "\e[32m[INFO]\e[0m GMS build selected: applying patches before build..."
@@ -399,6 +407,10 @@ if [ ${#GERRIT_PATCH_INPUTS[@]} -gt 0 ]; then
     echo "Applying Gerrit patches..."
     apply_gerrit_patches "${GERRIT_PATCH_INPUTS[@]}"
 fi
+
+## Unset Git username and email
+git config --global --unset user.name > /dev/null 2>&1
+git config --global --unset user.email > /dev/null 2>&1
 
 #######################################
 # 6. BUILD THE ROM
