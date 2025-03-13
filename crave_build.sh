@@ -84,9 +84,9 @@ upload_log() {
         echo "Error: File '$file' not found." >&2
         return 1
     fi
-    # Upload the file to 0x0.st and capture the URL.
+    # Upload the file to 0x0.st using HTTP POST and capture the URL.
     local output_url
-    output_url=$(curl --silent --upload-file "$file" https://0x0.st)
+    output_url=$(curl --silent -F "file=@$file" https://0x0.st)
     if [ -z "$output_url" ]; then
         # Check if 0x0.st is reachable.
         if curl --silent --head https://0x0.st > /dev/null; then
