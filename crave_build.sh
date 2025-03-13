@@ -26,7 +26,7 @@ REPO_URL="-u https://github.com/accupara/los22.git -b lineage-22.1 --git-lfs"
 
 # Export build system variables.
 export BUILD_USERNAME=user
-export BUILD_HOSTNAME=localhost 
+export BUILD_HOSTNAME=localhost
 export KBUILD_BUILD_USER=user
 export KBUILD_BUILD_HOST=localhost
 
@@ -43,6 +43,31 @@ notify "$PACKAGE_NAME Build on crave.io started. $START_TIME."
 #######################################
 # 3. DEFINE HELPER FUNCTIONS
 #######################################
+
+# Argument processing by loop; if key is "gerrit_patch", store its value in an array,otherwise export the key:value pair.which can utilized by other functions.
+process_arguments() {
+    GERRIT_PATCH_INPUTS=()
+    for arg in "$@"; do
+        if [[ "$arg" == *:* ]]; then
+            key="${arg%%:*}"
+            value="${arg#*:}"
+            if [ "$key" = "gerrit_patch" ]; then
+                GERRIT_PATCH_INPUTS+=("$value")
+            else
+                export "$key"="$value"
+                echo "Set parameter: $key=$value"
+            fi
+        fi
+    done
+
+    if [ ${#GERRIT_PATCH_INPUTS[@]} -gt 0 ]; then
+        echo "Found ${#GERRIT_PATCH_INPUTS[@]} Gerrit patch input(s):"
+        printf "  %s\n" "${GERRIT_PATCH_INPUTS[@]}"
+    else
+        echo "No Gerrit patch inputs provided."
+    fi
+}
+
 # Notification function for Telegram and ntfy notifications.
 notify() {
     local message="$1"
@@ -126,7 +151,7 @@ check_fail () {
    fi
 }
 
-# Function to apply patches (if necessary) before building.
+# Function to apply local patches (if necessary) before building.
 apply_patches() {
     # Expect two parameters: patches path and branch name.
     local patches_path="$1"
@@ -185,6 +210,84 @@ apply_patches() {
     done
 }
 
+# Fuction for applying Gerrit patches via direct Gerrit URL or a full cherry-pick command from gerrit review page.
+# Each input should be provided as a key:value with key "gerrit_patch".
+apply_gerrit_patches() {
+    if [ "$#" -eq 0 ]; then
+        echo "Usage: apply_gerrit_patches <gerrit_patch_input1> [<gerrit_patch_input2> ...]"
+        echo "  Each gerrit_patch_input should be a Gerrit URL or a full cherry-pick command."
+        return 1
+    fi
+
+    for patch in "$@"; do
+        patch=$(echo "$patch" | xargs)  # Trim whitespace.
+        echo "---------------------------------------"
+        echo "Processing Gerrit patch input: $patch"
+
+        if [[ "$patch" == git\ fetch* ]]; then
+            echo "Detected full cherry-pick command input."
+            set -- $patch
+            local remote_url="$3"
+            local ref="$4"
+            local project_path
+            project_path=$(echo "$remote_url" | sed -E 's|https?://[^/]+/?||')
+            if [ ! -d "${ANDROID_BUILD_TOP}/${project_path}" ]; then
+                echo "Project directory ${ANDROID_BUILD_TOP}/${project_path} not found. Skipping."
+                continue
+            fi
+            cd "${ANDROID_BUILD_TOP}/${project_path}" || { echo "Failed to cd to ${ANDROID_BUILD_TOP}/${project_path}"; continue; }
+            echo "Executing: $patch"
+            eval "$patch"
+            if [ $? -ne 0 ]; then
+                echo "Failed to apply Gerrit patch for ${project_path}."
+                git cherry-pick --abort 2>/dev/null
+                return 1
+            else
+                echo "Gerrit patch applied successfully for ${project_path}."
+            fi
+            cd "${ANDROID_BUILD_TOP}" || exit 1
+
+        else
+            echo "Detected direct Gerrit URL input."
+            local link="${patch%/}"
+            IFS='/' read -r protocol empty server dir project_org project_name plus change patchset <<< "$link"
+            if [ -z "$change" ]; then
+                echo "Could not parse the change number from URL: $link"
+                continue
+            fi
+            if [ -z "$patchset" ]; then
+                patchset="1"
+            fi
+            local remote_url="${protocol}//${server}/c"
+            local project="${project_org}/${project_name}"
+            local two_digits
+            two_digits=$(printf "%02d" $((change % 100)))
+            local ref="refs/changes/${two_digits}/${change}/${patchset}"
+
+            echo "Applying Gerrit patch for project: ${project} with change ${change}, patchset ${patchset} (ref: ${ref}) from ${remote_url}"
+            if [ ! -d "${ANDROID_BUILD_TOP}/${project}" ]; then
+                echo "Project directory ${ANDROID_BUILD_TOP}/${project} not found. Skipping."
+                continue
+            fi
+            cd "${ANDROID_BUILD_TOP}/${project}" || { echo "Failed to cd to ${ANDROID_BUILD_TOP}/${project}"; continue; }
+            local full_remote="${remote_url}/${project}"
+            echo "Fetching from: ${full_remote} ${ref}"
+            if git fetch "${full_remote}" "${ref}" && git cherry-pick FETCH_HEAD; then
+                echo "Gerrit patch applied successfully for ${project}."
+            else
+                echo "Failed to apply Gerrit patch for ${project} (change ${change})."
+                git cherry-pick --abort 2>/dev/null
+                return 1
+            fi
+            cd "${ANDROID_BUILD_TOP}" || exit 1
+        fi
+    done
+
+    echo "---------------------------------------"
+    echo "All Gerrit patches applied successfully."
+    return 0
+}
+
 #######################################
 # 4. INITIALIZE REPO & SYNC CODE
 #######################################
@@ -199,7 +302,7 @@ else
 
     # Download the device tree manifest.
     curl -o .repo/local_manifests/roomservice.xml \
-         https://raw.githubusercontent.com/gopaldhanve2003/local_manifests/refs/heads/lineage-21.1/roomservice.xml || { echo "Failed to download local_manifest.xml"; check_fail; }
+         https://raw.githubusercontent.com/gopaldhanve2003/local_manifests/refs/heads/lineage-21.1/roomservice.xml || { echo "Failed to download roomservice.xml"; check_fail; }
 
     # Download the extra manifest for vendor extras.
     curl -o .repo/local_manifests/extra.xml \
@@ -210,6 +313,12 @@ fi
 
 # Clone vendor_extra.
 git clone https://github.com/gopaldhanve2003/android_vendor_extra --depth 1 -b main vendor/extra
+
+#######################################
+# Process script arguments to collect arguments.
+# This should be done now so the inputs are stored for later use.
+#######################################
+process_arguments "$@"
 
 #######################################
 # 7. SANITIZE CREDENTIALS
@@ -282,6 +391,13 @@ if [[ ${WITH_GMS} == "true" ]]; then
     echo -e "\e[32m[INFO]\e[0m GMS build selected: applying patches before build..."
     notify "[INFO] GMS build selected: applying patches before build..."
     apply_patches "$PWD/vendor/extra/patches" "m/lineage-22.1"
+fi
+
+# Now that the repo is populated and local patches applied,
+# check if there are Gerrit patch inputs and apply them.
+if [ ${#GERRIT_PATCH_INPUTS[@]} -gt 0 ]; then
+    echo "Applying Gerrit patches..."
+    apply_gerrit_patches "${GERRIT_PATCH_INPUTS[@]}"
 fi
 
 #######################################
