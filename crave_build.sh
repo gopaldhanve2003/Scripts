@@ -475,6 +475,7 @@ git config --global --unset user.email > /dev/null 2>&1
 #######################################
 # 6. BUILD THE ROM
 #######################################
+cd "$ANDROID_BUILD_TOP"
 source build/envsetup.sh ; check_fail
 breakfast "${device}" ; check_fail
 m installclean ; check_fail
