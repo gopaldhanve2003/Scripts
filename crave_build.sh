@@ -1,5 +1,6 @@
 #!/bin/bash
 # Redirect all output to build.log while still printing to the console
+touch build.log
 exec > >(tee -a build.log) 2>&1
 
 #######################################
@@ -495,6 +496,10 @@ cleanup_self
 
 # Unset notification variables.
 unset TG_TOKEN TG_CID NTFYSUB
+
+# Restore default output and remove build.log.
+exec > /dev/tty 2>&1
+rm -rf build.log
 
 # Pause briefly before exiting.
 sleep 60
