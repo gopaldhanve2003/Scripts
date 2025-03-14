@@ -221,7 +221,7 @@ apply_gerrit_patches() {
         return 1
     fi
 
-    # Nested helper to convert a raw project string to a local repository path.
+    # Helper: Convert a raw project string to a local repository path.
     convert_project() {
         local proj="$1"
         # Remove the organization prefix (everything before the first slash).
@@ -235,6 +235,18 @@ apply_gerrit_patches() {
         echo "$repo_path" | tr '_' '/'
     }
 
+    # Helper: Change directory into the repository if it exists.
+    enter_repo() {
+        local repo_path="$1"
+        if [ ! -d "${ANDROID_BUILD_TOP}/${repo_path}" ]; then
+            echo "Project directory ${ANDROID_BUILD_TOP}/${repo_path} not found. Skipping."
+            return 1
+        fi
+        cd "${ANDROID_BUILD_TOP}/${repo_path}" || { echo "Failed to cd to ${ANDROID_BUILD_TOP}/${repo_path}"; return 1; }
+    }
+
+    local top_dir="${ANDROID_BUILD_TOP}"
+
     for patch in "$@"; do
         patch=$(echo "$patch" | xargs)  # Trim whitespace.
         echo "---------------------------------------"
@@ -242,49 +254,45 @@ apply_gerrit_patches() {
 
         if [[ "$patch" == git\ fetch* ]]; then
             echo "Detected full cherry-pick command input."
-            # Split the command into its parts.
+            # Tokenize the command.
             set -- $patch
             local remote_url="$3"
             local ref="$4"
-
-            # Remove protocol and domain from remote_url.
             local project
+            # For a full command, remove protocol and domain.
             project=$(echo "$remote_url" | sed -E 's|https?://[^/]+/||')
             local repo_path
             repo_path=$(convert_project "$project")
 
-            if [ ! -d "${ANDROID_BUILD_TOP}/${repo_path}" ]; then
-                echo "Project directory ${ANDROID_BUILD_TOP}/${repo_path} not found. Skipping."
+            if ! enter_repo "$repo_path"; then
                 continue
             fi
 
-            cd "${ANDROID_BUILD_TOP}/${repo_path}" || { echo "Failed to cd to ${ANDROID_BUILD_TOP}/${repo_path}"; continue; }
             echo "Executing: $patch"
             eval "$patch"
             if [ $? -ne 0 ]; then
                 echo "Failed to apply Gerrit patch for ${repo_path}."
                 git cherry-pick --abort 2>/dev/null
+                cd "$top_dir" || exit 1
                 return 1
             else
                 echo "Gerrit patch applied successfully for ${repo_path}."
             fi
-            cd "${ANDROID_BUILD_TOP}" || exit 1
+            cd "$top_dir" || exit 1
 
         else
             echo "Detected direct Gerrit URL input."
             local link="${patch%/}"
-            # Extract the Gerrit project from the URL.
             local project
+            # Extract the project from the Gerrit URL.
             project=$(echo "$link" | sed -E 's|https?://[^/]+/c/([^/]+/[^/]+)/\+.*|\1|')
             if [ -z "$project" ]; then
                 echo "Could not parse project from URL: $link"
                 continue
             fi
-
             local repo_path
             repo_path=$(convert_project "$project")
 
-            # Extract change number.
             local change
             change=$(echo "$link" | sed -E 's|.*/\+/([0-9]+).*|\1|')
             if [ -z "$change" ]; then
@@ -297,27 +305,41 @@ apply_gerrit_patches() {
             two_digits=$(printf "%02d" $((change % 100)))
             local ref="refs/changes/${two_digits}/${change}/${patchset}"
 
-            # Extract the base remote URL.
-            local base_remote
-            base_remote=$(echo "$link" | sed -E 's|(https?://[^/]+)/.*|\1|')"/c"
+            # Determine the base remote URL.
+            local base_remote=""
+            if [ -n "$GERRIT_BASE_REMOTE_OVERRIDE" ]; then
+                base_remote="$GERRIT_BASE_REMOTE_OVERRIDE"
+            elif echo "$link" | grep -q "^https://review\."; then
+                # Switch from any review URL to GitHub.
+                base_remote=$(echo "$link" | sed -E 's|https://review\.[^/]+/c/([^/]+/[^/]+)/.*|\1|')
+                base_remote="https://github.com/${base_remote}"
+            else
+                base_remote=$(echo "$link" | sed -E 's|(https?://[^/]+)/.*|\1|')"/c"
+            fi
 
             echo "Applying Gerrit patch for project: ${project} (repo path: ${repo_path}) with change ${change}, patchset ${patchset} (ref: ${ref}) from ${base_remote}"
-            if [ ! -d "${ANDROID_BUILD_TOP}/${repo_path}" ]; then
-                echo "Project directory ${ANDROID_BUILD_TOP}/${repo_path} not found. Skipping."
+            if ! enter_repo "$repo_path"; then
                 continue
             fi
 
-            cd "${ANDROID_BUILD_TOP}/${repo_path}" || { echo "Failed to cd to ${ANDROID_BUILD_TOP}/${repo_path}"; continue; }
-            local full_remote="${base_remote}/${project}"
+            # Determine full remote URL.
+            local full_remote=""
+            if echo "$link" | grep -q "^https://review\."; then
+                full_remote="$base_remote"
+            else
+                full_remote="${base_remote}/${project}"
+            fi
+
             echo "Fetching from: ${full_remote} ${ref}"
             if git fetch "${full_remote}" "${ref}" && git cherry-pick FETCH_HEAD; then
                 echo "Gerrit patch applied successfully for ${repo_path}."
             else
                 echo "Failed to apply Gerrit patch for ${repo_path} (change ${change})."
                 git cherry-pick --abort 2>/dev/null
+                cd "$top_dir" || exit 1
                 return 1
             fi
-            cd "${ANDROID_BUILD_TOP}" || exit 1
+            cd "$top_dir" || exit 1
         fi
     done
 
@@ -325,6 +347,7 @@ apply_gerrit_patches() {
     echo "All Gerrit patches applied successfully."
     return 0
 }
+
 
 #######################################
 # 4. INITIALIZE REPO & SYNC CODE
