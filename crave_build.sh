@@ -103,22 +103,22 @@ cleanup_self () {
     rm -f GOFILE.txt
 }
 
-# Function to upload a log file to 0x0.st.
+# Function to upload a log file to paste.rs.
 upload_log() {
     local file="$1"
     if [ ! -f "$file" ]; then
         echo "Error: File '$file' not found." >&2
         return 1
     fi
-    # Upload the file to 0x0.st using HTTP POST and capture the URL.
+    # Upload the file to paste.rs by sending raw data.
     local output_url
-    output_url=$(curl --silent -F "file=@$file" https://0x0.st)
+    output_url=$(curl --silent --data-binary @"$file" https://paste.rs)
     if [ -z "$output_url" ]; then
-        # Check if 0x0.st is reachable.
-        if curl --silent --head https://0x0.st > /dev/null; then
-            echo "Error: Upload failed despite 0x0.st being up." >&2
+        # Check if paste.rs is reachable.
+        if curl --silent --head https://paste.rs > /dev/null; then
+            echo "Error: Upload failed despite paste.rs being up." >&2
         else
-            echo "Error: Upload failed. 0x0.st appears to be down." >&2
+            echo "Error: Upload failed. paste.rs appears to be down." >&2
         fi
         return 1
     fi
@@ -131,7 +131,7 @@ check_fail () {
        # Capture the last 50 lines of build.log into output.txt.
        tail -n 50 build.log > output.txt
        
-       # Upload output.txt to 0x0.st and capture the URL.
+       # Upload output.txt to paste.rs and capture the URL.
        output_url=$(upload_log output.txt)
        
        # Output the URL to the console.
