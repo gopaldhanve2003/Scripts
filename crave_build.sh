@@ -1,7 +1,14 @@
 #!/bin/bash
-# Redirect all output to build.log while still printing to the console
-touch build.log
-exec > >(tee -a build.log) 2>&1
+# Set the Android build top directory and change into it.
+export ANDROID_BUILD_TOP="/tmp/src/android"
+cd "$ANDROID_BUILD_TOP" || { echo "[ERROR] Failed to cd to $ANDROID_BUILD_TOP"; exit 1; }
+
+# Define an absolute log file path.
+LOG_FILE="$ANDROID_BUILD_TOP/build.log"
+
+# Redirect all output to LOG_FILE while still printing to the console
+touch "$LOG_FILE"
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 #######################################
 # 1. INITIAL SETUP
@@ -10,10 +17,6 @@ exec > >(tee -a build.log) 2>&1
 source /home/admin/.profile
 source /home/admin/.bashrc
 source /tmp/crave_bashrc
-
-# Set the Android build top directory and change into it.
-export ANDROID_BUILD_TOP="/tmp/src/android"
-cd "$ANDROID_BUILD_TOP" || { echo "[ERROR] Failed to cd to $ANDROID_BUILD_TOP"; exit 1; }
 
 # Enable verbose mode for debugging.
 set -v
@@ -129,8 +132,8 @@ upload_log() {
 # Function to check the exit status of commands and send appropriate notifications.
 check_fail () {
    if [ $? -ne 0 ]; then 
-       # Capture the last 50 lines of build.log into output.txt.
-       tail -n 50 build.log > output.txt
+       # Capture the last 50 lines of LOG_FILE into output.txt.
+       tail -n 50 "$LOG_FILE" > output.txt
        
        # Upload output.txt to paste.rs and capture the URL.
        output_url=$(upload_log output.txt)
@@ -521,9 +524,9 @@ cleanup_self
 # Unset notification variables.
 unset TG_TOKEN TG_CID NTFYSUB
 
-# Restore default output and remove build.log.
+# Restore default output and remove LOG_FILE.
 exec > /dev/tty 2>&1
-rm -rf build.log
+rm -rf "$LOG_FILE"
 
 # Pause briefly before exiting.
 sleep 60
