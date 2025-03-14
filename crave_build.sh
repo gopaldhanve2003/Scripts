@@ -378,6 +378,9 @@ fi
 # Clone vendor_extra.
 git clone https://github.com/gopaldhanve2003/android_vendor_extra --depth 1 -b main vendor/extra
 
+# For proper post-syncing check each repo, if .gitattributes is present and contains "filter=lfs", install Git LFS, fetch LFS objects, and checkout the actual content.
+repo forall -c 'if [ -f .gitattributes ] && grep -q "filter=lfs" .gitattributes; then git lfs install && git lfs fetch && git lfs checkout; fi'
+
 #######################################
 # Process script arguments to collect arguments.
 # This should be done now so the inputs are stored for later use.
