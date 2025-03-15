@@ -48,30 +48,6 @@ notify "$PACKAGE_NAME Build on crave.io started. $START_TIME."
 # 3. DEFINE HELPER FUNCTIONS
 #######################################
 
-# Argument processing by loop; if key is "gerrit_patch", store its value in an array,otherwise export the key:value pair.which can utilized by other functions.
-process_arguments() {
-    GERRIT_PATCH_INPUTS=()
-    for arg in "$@"; do
-        if [[ "$arg" == *:* ]]; then
-            key="${arg%%:*}"
-            value="${arg#*:}"
-            if [ "$key" = "gerrit_patch" ]; then
-                GERRIT_PATCH_INPUTS+=("$value")
-            else
-                export "$key"="$value"
-                echo "Set parameter: $key=$value"
-            fi
-        fi
-    done
-
-    if [ ${#GERRIT_PATCH_INPUTS[@]} -gt 0 ]; then
-        echo "Found ${#GERRIT_PATCH_INPUTS[@]} Gerrit patch input(s):"
-        printf "  %s\n" "${GERRIT_PATCH_INPUTS[@]}"
-    else
-        echo "No Gerrit patch inputs provided."
-    fi
-}
-
 # Notification function for Telegram and ntfy notifications.
 notify() {
     local message="$1"
@@ -466,7 +442,11 @@ if [[ ${WITH_GMS} == "true" ]]; then
 fi
 
 # Now that the repo is populated and local patches applied,
-# check if there are Gerrit patch inputs and apply them.
+# If the GERRIT_PATCH environment variable is set,split it into an array using semicolons as delimiters.
+if [ -n "$GERRIT_PATCH" ]; then
+    IFS=';' read -r -a GERRIT_PATCH_INPUTS <<< "$GERRIT_PATCH"
+fi
+# If any Gerrit patch inputs are provided in the environment,call the apply_gerrit_patches function with those inputs.
 if [ ${#GERRIT_PATCH_INPUTS[@]} -gt 0 ]; then
     echo "Applying Gerrit patches..."
     apply_gerrit_patches "${GERRIT_PATCH_INPUTS[@]}"
