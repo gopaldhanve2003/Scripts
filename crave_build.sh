@@ -158,87 +158,88 @@ check_fail () {
 
 # Function to apply local patches (if necessary) before building.
 apply_patches() {
-    # Expect two parameters: patches path and branch name.
     local patches_path="$1"
     local branch="$2"
 
+    # Validate input parameters.
     if [ -z "$patches_path" ] || [ -z "$branch" ]; then
         echo "Usage: apply_patches <patches_path> <branch>"
-        echo "  <patches_path> - Absolute or relative path to the patches folder containing subdirectories for each project."
+        echo "  <patches_path> - Path to the patches folder containing subdirectories for each target repo."
         echo "  <branch>       - The Git branch to compare HEAD against before applying patches."
         return 1
     fi
 
+    # Ensure the patches directory exists.
     if [ ! -d "$patches_path" ]; then
         echo "Patches directory '$patches_path' does not exist."
         return 1
     fi
 
-    # Loop over each project directory in the patches path
-    for project_dir in "$patches_path"/*/; do
-        # Remove trailing slash and extract project name
-        local project_name
-        project_name=$(basename "${project_dir}")
+    # Loop over each subdirectory in the patches folder.
+    for patch_subdir in "$patches_path"/*/; do
+        # Extract the repository name from the subdirectory name.
+        local target_repo
+        target_repo=$(basename "${patch_subdir}")
 
-        # Convert underscores to slashes to form the repository path
-        local project_path
-        project_path=$(echo "$project_name" | tr '_' '/')
+        # Convert underscores to slashes to form the local repository path.
+        local target_repo_path
+        target_repo_path=$(echo "$target_repo" | tr '_' '/')
 
-        # Change to the repository top directory and then to the project path
+        # Change to the Android build top directory.
         cd "${ANDROID_BUILD_TOP}" || { echo "ANDROID_BUILD_TOP is not set or invalid"; return 1; }
-        cd "${project_path}" || { echo "Project path '${project_path}' not found. Skipping."; continue; }
+        # Change to the target repository path.
+        cd "${target_repo_path}" || { echo "Repository path '${target_repo_path}' not found. Skipping."; continue; }
 
-        # Get the current commit and the commit of the specified branch
+        # Get the current commit and the commit of the specified branch.
         local head_commit branch_commit
         head_commit=$(git rev-parse HEAD)
         branch_commit=$(git rev-parse "$branch" 2>/dev/null)
 
+        # If the branch is not found, skip this repo.
         if [ $? -ne 0 ]; then
-            echo "Branch '$branch' not found in project '${project_name}'. Skipping."
+            echo "Branch '$branch' not found in repository '${target_repo}'. Skipping."
             cd "${ANDROID_BUILD_TOP}" || exit 1
             continue
         fi
 
-        # If HEAD matches the branch commit, apply the patches
+        # Only apply patches if the repository HEAD matches the branch commit.
         if [ "$head_commit" = "$branch_commit" ]; then
-            echo "Applying patches for project: ${project_name} on commit ${head_commit}"
-            if ! git am "${patches_path}/${project_name}"/*.patch --no-gpg-sign; then
-                echo "Failed to apply patches for project: ${project_name}. Aborting patch application."
+            echo "Applying patches for repository: ${target_repo} on commit ${head_commit}"
+            if ! git am "${patches_path}/${target_repo}"/*.patch --no-gpg-sign; then
+                echo "Failed to apply patches for repository: ${target_repo}. Aborting."
                 git am --abort &> /dev/null
             fi
         else
-            echo "Skipping project: ${project_name}, HEAD (${head_commit}) is not on branch ${branch} (${branch_commit})."
+            echo "Skipping repository: ${target_repo}, HEAD (${head_commit}) is not on branch ${branch} (${branch_commit})."
         fi
 
-        # Return to the root of the build directory for the next project
+        # Return to the Android build top directory for the next repo.
         cd "${ANDROID_BUILD_TOP}" || exit 1
     done
 }
 
-# Fuction for applying Gerrit patches via direct Gerrit URL or a full cherry-pick command from gerrit review page.
-# Each input should be provided as a key:value with key "gerrit_patch".
+# This function applies Gerrit patches.
+# Each input should be either a Gerrit URL or a full cherry-pick command.
 apply_gerrit_patches() {
     if [ "$#" -eq 0 ]; then
         echo "Usage: apply_gerrit_patches <gerrit_patch_input1> [<gerrit_patch_input2> ...]"
-        echo "  Each gerrit_patch_input should be a Gerrit URL or a full cherry-pick command."
+        echo "  Each input should be a Gerrit URL or a full cherry-pick command."
         return 1
     fi
 
-    # Helper: Convert a raw project string to a local repository path.
-    convert_project() {
-        local proj="$1"
-        # Remove the organization prefix (everything before the first slash).
-        local repo_path="${proj#*/}"
-        # Optionally remove a common project prefix (default: "android_")
-        : ${GERRIT_PROJECT_PREFIX:="android_"}
-        if [[ "$repo_path" == ${GERRIT_PROJECT_PREFIX}* ]]; then
-            repo_path="${repo_path#$GERRIT_PROJECT_PREFIX}"
+    # Helper function: Convert a target repo string to a local directory path.
+    # It removes the organization prefix and replaces underscores with slashes.
+    convert_target_repo() {
+        local target_repo="$1"
+        local repo_path="${target_repo#*/}"
+        : ${GERRIT_REPO_PREFIX:="android_"}
+        if [[ "$repo_path" == ${GERRIT_REPO_PREFIX}* ]]; then
+            repo_path="${repo_path#$GERRIT_REPO_PREFIX}"
         fi
-        # Replace underscores with directory separators.
         echo "$repo_path" | tr '_' '/'
     }
 
-    # Helper: Change directory into the repository if it exists.
+    # Helper function: Change directory into the repository if it exists.
     enter_repo() {
         local repo_path="$1"
         if [ ! -d "${ANDROID_BUILD_TOP}/${repo_path}" ]; then
@@ -250,22 +251,23 @@ apply_gerrit_patches() {
 
     local top_dir="${ANDROID_BUILD_TOP}"
 
+    # Process each Gerrit patch input.
     for patch in "$@"; do
         patch=$(echo "$patch" | xargs)  # Trim whitespace.
         echo "---------------------------------------"
         echo "Processing Gerrit patch input: $patch"
 
         if [[ "$patch" == git\ fetch* ]]; then
+            # Handle full cherry-pick command input.
             echo "Detected full cherry-pick command input."
-            # Tokenize the command.
             set -- $patch
             local remote_url="$3"
             local ref="$4"
-            local project
-            # For a full command, remove protocol and domain.
-            project=$(echo "$remote_url" | sed -E 's|https?://[^/]+/||')
+            local target_repo
+            # Extract the target repo from the remote URL.
+            target_repo=$(echo "$remote_url" | sed -E 's|https?://[^/]+/||')
             local repo_path
-            repo_path=$(convert_project "$project")
+            repo_path=$(convert_target_repo "$target_repo")
 
             if ! enter_repo "$repo_path"; then
                 continue
@@ -274,70 +276,67 @@ apply_gerrit_patches() {
             echo "Executing: $patch"
             eval "$patch"
             if [ $? -ne 0 ]; then
-                echo "Failed to apply Gerrit patch for ${repo_path}."
+                echo "Failed to apply Gerrit patch for ${target_repo}."
                 git cherry-pick --abort 2>/dev/null
                 cd "$top_dir" || exit 1
                 return 1
             else
-                echo "Gerrit patch applied successfully for ${repo_path}."
+                echo "Gerrit patch applied successfully for ${target_repo}."
             fi
             cd "$top_dir" || exit 1
 
         else
+            # Handle direct Gerrit URL input.
             echo "Detected direct Gerrit URL input."
-            local link="${patch%/}"
-            local project
-            # Extract the project from the Gerrit URL.
-            project=$(echo "$link" | sed -E 's|https?://[^/]+/c/([^/]+/[^/]+)/\+.*|\1|')
-            if [ -z "$project" ]; then
-                echo "Could not parse project from URL: $link"
+            local gerrit_link="${patch%/}"
+            local target_repo
+            # Extract the target repo from the Gerrit URL.
+            target_repo=$(echo "$gerrit_link" | sed -E 's|https?://[^/]+/c/([^/]+/[^/]+)/\+.*|\1|')
+            if [ -z "$target_repo" ]; then
+                echo "Could not parse repository from URL: $gerrit_link"
                 continue
             fi
             local repo_path
-            repo_path=$(convert_project "$project")
-
-            local change
-            change=$(echo "$link" | sed -E 's|.*/\+/([0-9]+).*|\1|')
-            if [ -z "$change" ]; then
-                echo "Could not parse change number from URL: $link"
+            repo_path=$(convert_target_repo "$target_repo")
+            local change_id
+            # Extract the change ID from the Gerrit URL.
+            change_id=$(echo "$gerrit_link" | sed -E 's|.*/\+/([0-9]+).*|\1|')
+            if [ -z "$change_id" ]; then
+                echo "Could not parse change ID from URL: $gerrit_link"
                 continue
             fi
-
             local patchset="1"
             local two_digits
-            two_digits=$(printf "%02d" $((change % 100)))
-            local ref="refs/changes/${two_digits}/${change}/${patchset}"
-
-            # Determine the base remote URL.
+            two_digits=$(printf "%02d" $((change_id % 100)))
+            local ref="refs/changes/${two_digits}/${change_id}/${patchset}"
             local base_remote=""
+            # Determine the base remote URL.
             if [ -n "$GERRIT_BASE_REMOTE_OVERRIDE" ]; then
                 base_remote="$GERRIT_BASE_REMOTE_OVERRIDE"
-            elif echo "$link" | grep -q "^https://review\."; then
-                # Switch from any review URL to GitHub.
-                base_remote=$(echo "$link" | sed -E 's|https://review\.[^/]+/c/([^/]+/[^/]+)/.*|\1|')
+            elif echo "$gerrit_link" | grep -q "^https://review\."; then
+                base_remote=$(echo "$gerrit_link" | sed -E 's|https://review\.[^/]+/c/([^/]+/[^/]+)/.*|\1|')
                 base_remote="https://github.com/${base_remote}"
             else
-                base_remote=$(echo "$link" | sed -E 's|(https?://[^/]+)/.*|\1|')"/c"
+                base_remote=$(echo "$gerrit_link" | sed -E 's|(https?://[^/]+)/.*|\1|')"/c"
             fi
 
-            echo "Applying Gerrit patch for project: ${project} (repo path: ${repo_path}) with change ${change}, patchset ${patchset} (ref: ${ref}) from ${base_remote}"
+            echo "Applying Gerrit patch for target repo: ${target_repo} (repo path: ${repo_path}) with change ${change_id}, patchset ${patchset} (ref: ${ref}) from ${base_remote}"
             if ! enter_repo "$repo_path"; then
                 continue
             fi
 
-            # Determine full remote URL.
             local full_remote=""
-            if echo "$link" | grep -q "^https://review\."; then
+            if echo "$gerrit_link" | grep -q "^https://review\."; then
                 full_remote="$base_remote"
             else
-                full_remote="${base_remote}/${project}"
+                full_remote="${base_remote}/${target_repo}"
             fi
 
             echo "Fetching from: ${full_remote} ${ref}"
             if git fetch "${full_remote}" "${ref}" && git cherry-pick FETCH_HEAD; then
-                echo "Gerrit patch applied successfully for ${repo_path}."
+                echo "Gerrit patch applied successfully for ${target_repo}."
             else
-                echo "Failed to apply Gerrit patch for ${repo_path} (change ${change})."
+                echo "Failed to apply Gerrit patch for ${target_repo} (change ${change_id})."
                 git cherry-pick --abort 2>/dev/null
                 cd "$top_dir" || exit 1
                 return 1
@@ -350,7 +349,6 @@ apply_gerrit_patches() {
     echo "All Gerrit patches applied successfully."
     return 0
 }
-
 
 #######################################
 # 4. INITIALIZE REPO & SYNC CODE
