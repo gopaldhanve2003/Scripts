@@ -24,8 +24,12 @@ set -v
 #######################################
 # 2. DEFINE BUILD VARIABLES & ENVIRONMENT
 #######################################
-PACKAGE_NAME=lineage-22.1
-VARIANT_NAME=user
+PROJECT=${PROJECT:-LineageOS}
+PRODUCT_NAME=${PRODUCT_NAME:-lineage_RMX2001L1}
+DEVICE=${DEVICE:-RMX2001L1}
+BUILD_FLAVOR=${BUILD_FLAVOR:-gms}  # alternatives: gms or vanilla
+RELEASE_TYPE=${RELEASE_TYPE:-user}  # e.g., user build
+RELEASE_VERSION=${RELEASE_VERSION:-22.1}
 REPO_URL="-u https://github.com/accupara/los22.git -b lineage-22.1 --git-lfs"
 
 # Export build system variables.
@@ -42,7 +46,7 @@ SECONDS=0
 
 # Notify build start
 START_TIME=$(env TZ=Asia/kolkata date)
-notify "$PACKAGE_NAME Build on crave.io started. $START_TIME."
+notify "$PROJECT Build on crave.io started. $START_TIME."
 
 #######################################
 # 3. DEFINE HELPER FUNCTIONS
@@ -118,13 +122,13 @@ check_fail () {
        echo "Log URL: $output_url"
        
        # Determine the type of failure and notify accordingly.
-       if ls out/target/product/"${device}"/"$PACKAGE_NAME"*.zip >/dev/null 2>&1; then
-          notify "$PACKAGE_NAME Build on crave.io softfailed. $(env TZ=Asia/kolkata date). Log: $output_url"
+       if find out/target/product/"${DEVICE}" -maxdepth 1 -type f -iname "*${PROJECT}*${DEVICE}*.zip" | grep -q .; then
+          notify "$PROJECT Build on crave.io softfailed. $(env TZ=Asia/kolkata date). Log: $output_url"
           echo "Weird: build failed but OTA package exists."
           cleanup_self
           exit 1
        else
-          notify "$PACKAGE_NAME Build on crave.io failed. $(env TZ=Asia/kolkata date). Log: $output_url"
+          notify "$PROJECT Build on crave.io failed. $(env TZ=Asia/kolkata date). Log: $output_url"
           echo "Oh no, the script failed."
           cleanup_self
           exit 1 
@@ -412,20 +416,15 @@ set +v
 #######################################
 # 5. DEVICE & BUILD VARIANT SETUP
 #######################################
-device=RMX2001L1
-#WITH_GMS=true
-project_name="${device}"
-
-if [[ ${WITH_GMS} == "true" ]]; then
-    type="GMS"
-    device_variant="${device}_gms"
-else
-    type="VANILLA"
-    device_variant="${device}"
+# Allow an external override of BUILD_FLAVOR using WITH_GMS.
+if [ "${WITH_GMS}" == "true" ]; then
+    BUILD_FLAVOR="gms"
+elif [ "${WITH_GMS}" == "false" ]; then
+    BUILD_FLAVOR="vanilla"
 fi
 
-echo -e "\e[32m[INFO]\e[0m Starting build for device: ${device} (${type} build)"
-notify "[INFO] Starting build for device: ${device} (${type} build)"
+echo -e "\e[32m[INFO]\e[0m Starting build for device: ${DEVICE} (flavour: ${BUILD_FLAVOR})"
+notify "[INFO] Starting build for device: ${DEVICE} (flavour: ${BUILD_FLAVOR})"
 
 ## Set Git username and email silently (suppress output and errors)
 git config --global user.name "$NAME" > /dev/null 2>&1
@@ -435,7 +434,7 @@ git config --global user.email "$MAIL" > /dev/null 2>&1
 unset NAME MAIL
 
 # If this is a GMS build, apply the necessary patches.
-if [[ ${WITH_GMS} == "true" ]]; then
+if [[ "${BUILD_FLAVOR}" == "gms" ]]; then
     echo -e "\e[32m[INFO]\e[0m GMS build selected: applying patches before build..."
     notify "[INFO] GMS build selected: applying patches before build..."
     apply_patches "$PWD/vendor/extra/patches" "m/lineage-22.1"
@@ -461,10 +460,10 @@ git config --global --unset user.email > /dev/null 2>&1
 #######################################
 cd "$ANDROID_BUILD_TOP"
 source build/envsetup.sh ; check_fail
-breakfast "${device}" ; check_fail
+breakfast "${DEVICE}" "$RELEASE_TYPE" ; check_fail
 m installclean ; check_fail
-echo -e "\e[32m[INFO]\e[0m Running m bacon for ${device}"
-notify "[INFO] Running m bacon for ${device}"
+echo -e "\e[32m[INFO]\e[0m Running m bacon for ${DEVICE}"
+notify "[INFO] Running m bacon for ${DEVICE}"
 m bacon ; check_fail
 
 # Re-enable verbose mode for final steps.
@@ -473,15 +472,20 @@ set -v
 #######################################
 # 7. POST-BUILD PROCESSING & UPLOAD
 #######################################
-
 # Notify that the build succeeded.
 SUCCESS_TIME=$(env TZ=Asia/kolkata date)
-notify "Build $PACKAGE_NAME GAPPS on crave.io succeeded. $SUCCESS_TIME."
+notify "Build $PROJECT GAPPS on crave.io succeeded. $SUCCESS_TIME."
+
+# Search for the generated ZIP file based on PROJECT (latest file by modification time)
+ZIP_FILE=$(find out/target/product/"${DEVICE}" -maxdepth 1 -type f -iname "*${PROJECT}*${DEVICE}*.zip" -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n 1 | cut -d' ' -f2-)
+if [ -z "$ZIP_FILE" ]; then
+    echo "[ERROR] No ZIP file found matching ${PROJECT} (case-insensitive)."
+    exit 1
+fi
 
 # Copy the generated ZIP file to the current directory.
-cp out/target/product/"${device}"/"$PACKAGE_NAME"*.zip .
-GO_FILE=$(ls -1tr "$PACKAGE_NAME"*.zip | tail -1)
-GO_FILE=$(pwd)/"$GO_FILE"
+cp "$ZIP_FILE" .
+GO_FILE=$(pwd)/$(basename "$ZIP_FILE")
 
 # Download and execute the file upload script.
 curl -o goupload.sh -L https://raw.githubusercontent.com/Joe7500/Builds/refs/heads/main/crave/gofile.sh ; check_fail
@@ -489,15 +493,15 @@ bash goupload.sh "$GO_FILE" ; check_fail
 GO_LINK=$(cat GOFILE.txt)
 
 # Send upload notification.
-notify "$PACKAGE_NAME $(basename "$GO_FILE") $GO_LINK"
+notify "$PROJECT $(basename "$GO_FILE") $GO_LINK"
 # Echo just in case notification fails.
-echo -e "\e[32m[INFO]\e[0m $PACKAGE_NAME $(basename "$GO_FILE") $GO_LINK"
+echo -e "\e[32m[INFO]\e[0m $PROJECT $(basename "$GO_FILE") $GO_LINK"
 
 #######################################
 # 8. FINAL NOTIFICATIONS & CLEANUP
 #######################################
 TIME_TAKEN=$(printf '%dh:%dm:%ds\n' $((SECONDS/3600)) $((SECONDS%3600/60)) $((SECONDS%60)))
-notify "$PACKAGE_NAME Build on crave.io completed. $TIME_TAKEN. $(env TZ=Asia/kolkata date)."
+notify "$PRODUCT_NAME Build on crave.io completed. $TIME_TAKEN. $(env TZ=Asia/kolkata date)."
 
 # Run cleanup to remove temporary and sensitive files.
 cleanup_self
