@@ -101,7 +101,10 @@ monitorProgress() {
   local build_pid="$1"
   local last_pct=0
   get_prog() {
-    grep -oP '^\[\s*\d+%\s+\d+/\d+' "$LOG_FILE" | tail -n1
+    sed -n '/Starting ninja/,$p' "$LOG_FILE" | \
+      grep -oP '\[\s*\d+%\s+\d+/\d+' | \
+      tail -n 1 | \
+      sed -E 's/\[\s*//; s/[[:space:]]+/ (/; s/$/)/'
   }
   while kill -0 "$build_pid" 2>/dev/null; do
     local prog_line curr_pct
