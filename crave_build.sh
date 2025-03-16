@@ -1,66 +1,139 @@
 #!/bin/bash
-# Set the Android build top directory and change into it.
-export ANDROID_BUILD_TOP="/tmp/src/android"
-cd "$ANDROID_BUILD_TOP" || { echo "[ERROR] Failed to cd to $ANDROID_BUILD_TOP"; exit 1; }
-
-# Define an absolute log file path.
-LOG_FILE="$ANDROID_BUILD_TOP/build.log"
-
-# Redirect all output to LOG_FILE while still printing to the console
-touch "$LOG_FILE"
-exec > >(tee -a "$LOG_FILE") 2>&1
-
 #######################################
-# 1. INITIAL SETUP
-#######################################
-# Source global and user-specific environment variables and credentials.
-source /home/admin/.profile
-source /home/admin/.bashrc
-source /tmp/crave_bashrc
-
-# Enable verbose mode for debugging.
-set -v
-
-#######################################
-# 2. DEFINE BUILD VARIABLES & ENVIRONMENT
-#######################################
-PROJECT=${PROJECT:-LineageOS}
-PRODUCT_NAME=${PRODUCT_NAME:-lineage_RMX2001L1}
-DEVICE=${DEVICE:-RMX2001L1}
-BUILD_FLAVOR=${BUILD_FLAVOR:-gms}  # alternatives: gms or vanilla
-RELEASE_TYPE=${RELEASE_TYPE:-user}  # e.g., user build
-RELEASE_VERSION=${RELEASE_VERSION:-22.1}
-REPO_URL="-u https://github.com/accupara/los22.git -b lineage-22.1 --git-lfs"
-
-# Export build system variables.
-export BUILD_USERNAME=user
-export BUILD_HOSTNAME=localhost
-export KBUILD_BUILD_USER=user
-export KBUILD_BUILD_HOST=localhost
-
-# Telegram and ntfy configuration (ensure TG_TOKEN, TG_CID, and NTFYSUB are set in your environment)
-TG_URL="https://api.telegram.org/bot${TG_TOKEN}/sendMessage"
-
-# Start a timer to measure build duration.
-SECONDS=0
-
-# Notify build start
-START_TIME=$(env TZ=Asia/kolkata date)
-notify "$PROJECT Build on crave.io started. $START_TIME."
-
-#######################################
-# 3. DEFINE HELPER FUNCTIONS
+# DEFINE HELPER FUNCTIONS
 #######################################
 
-# Notification function for Telegram and ntfy notifications.
-notify() {
-    local message="$1"
-    # Send notification via Telegram.
-    curl -s -X POST "$TG_URL" -d chat_id="$TG_CID" -d text="$message" > /dev/null 2>&1
-    # Send notification via ntfy.
-    curl -s -d "$message" "https://ntfy.sh/$NTFYSUB" > /dev/null 2>&1
+# --- Telegram Notification Functions ---
+# buildHeader returns a common header based on ENV_DEFINED.
+buildHeader() {
+  if [ "${ENV_DEFINED:-0}" = "1" ]; then
+    echo "<b>${PROJECT}-${RELEASE_VERSION}</b>
+Build started for ${DEVICE}
+Flavour: ${BUILD_FLAVOR} | Release: ${RELEASE_TYPE}"
+  else
+    echo "<b>${PROJECT}-${RELEASE_VERSION}</b>
+Build started for ${DEVICE}"
+  fi
 }
 
+# formatMsg constructs a full HTML message.
+# Modes:
+#   final   → expects build duration and download link.
+#   failed  → expects a log URL and uses the custom stage (fail_stage).
+#   progress→ expects a raw progress string and reformats it.
+formatMsg() {
+  local mode="$1"
+  shift
+  local header
+  header=$(buildHeader)
+  case "$mode" in
+    final)
+      local duration="$1"; shift
+      local dl="$1"
+      echo "$header
+Status: <b>100% (complete)</b>
+Time: ${duration}
+Download: ${dl}"
+      ;;
+    failed)
+      local log_url="$1"
+      echo "$header
+Status: <b>${fail_stage}</b>. Log: ${log_url}"
+      ;;
+    progress)
+      local raw="$1"
+      local stat
+      if [[ "$raw" == \[* ]]; then
+        stat=$(echo "$raw" | sed -E 's/^\[\s*([0-9]+%)\s+([0-9]+\/[0-9]+)\]$/\1 (\2)/')
+      else
+        stat="$raw"
+      fi
+      echo "$header
+Status: <b>${stat}</b>"
+      ;;
+    *)
+      echo "Error: Invalid mode in formatMsg" >&2
+      return 1
+      ;;
+  esac
+}
+
+# notifyMsg sends a new Telegram message or updates an existing one.
+notifyMsg() {
+  local msg
+  msg=$(formatMsg "$@")
+  if [ -z "$msg_id" ]; then
+    local resp
+    resp=$(curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+           -d chat_id="${TG_CID}" \
+           -d parse_mode="HTML" \
+           -d text="$msg")
+    msg_id=$(echo "$resp" | jq -r '.result.message_id')
+  else
+    curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/editMessageText" \
+         -d chat_id="${TG_CID}" \
+         -d parse_mode="HTML" \
+         -d message_id="${msg_id}" \
+         -d text="$msg" > /dev/null 2>&1
+  fi
+}
+
+# notifyStage is a convenience function to update the current stage.
+notifyStage() {
+  local stage_msg="$1"
+  notifyMsg progress "$stage_msg"
+}
+
+# failStage is invoked when a command fails.
+# It captures the last 100 lines of LOG_FILE, uploads them to paste.rs, and notifies Telegram.
+failStage() {
+  local stage="$1"
+  fail_stage="$stage"
+  tail -n 100 "$LOG_FILE" > err.log
+  local log_url
+  log_url=$(curl -s --data-binary @"err.log" https://paste.rs)
+  notifyMsg failed "$log_url"
+  exit 1
+}
+
+# monitorProgress monitors build progress by scanning LOG_FILE and updating Telegram.
+monitorProgress() {
+  local build_pid="$1"
+  local last_pct=0
+  get_prog() {
+    grep -oP '^\[\s*\d+%\s+\d+/\d+' "$LOG_FILE" | tail -n1
+  }
+  while kill -0 "$build_pid" 2>/dev/null; do
+    local prog_line curr_pct
+    prog_line=$(get_prog)
+    curr_pct=$(echo "$prog_line" | grep -oP '^\d+(?=%)')
+    if [[ "$curr_pct" =~ ^[0-9]+$ ]] && (( curr_pct > last_pct )); then
+      notifyMsg progress "$prog_line"
+      last_pct=$curr_pct
+    fi
+    sleep 10
+  done
+}
+
+# waitForBuild waits for the build process to finish.
+# On failure, it calls failStage with a custom message.
+waitForBuild() {
+  local build_pid="$1"
+  wait "$build_pid"
+  local ec=$?
+  if [ $ec -ne 0 ]; then
+    failStage "Build failed"
+  fi
+}
+
+# finalizeMsg sends the final success notification.
+finalizeMsg() {
+  local duration="$1"
+  local dl="$2"
+  notifyMsg final "$duration" "$dl"
+}
+
+# --- Non-Telegram Helper Functions ---
 # Cleanup function to remove temporary files and directories.
 cleanup_self () {
     cd "$ANDROID_BUILD_TOP" || exit 1
@@ -107,33 +180,6 @@ upload_log() {
         return 1
     fi
     echo "$output_url"
-}
-
-# Function to check the exit status of commands and send appropriate notifications.
-check_fail () {
-   if [ $? -ne 0 ]; then 
-       # Capture the last 50 lines of LOG_FILE into output.txt.
-       tail -n 50 "$LOG_FILE" > output.txt
-       
-       # Upload output.txt to paste.rs and capture the URL.
-       output_url=$(upload_log output.txt)
-       
-       # Output the URL to the console.
-       echo "Log URL: $output_url"
-       
-       # Determine the type of failure and notify accordingly.
-       if find out/target/product/"${DEVICE}" -maxdepth 1 -type f -iname "*${PROJECT}*${DEVICE}*.zip" | grep -q .; then
-          notify "$PROJECT Build on crave.io softfailed. $(env TZ=Asia/kolkata date). Log: $output_url"
-          echo "Weird: build failed but OTA package exists."
-          cleanup_self
-          exit 1
-       else
-          notify "$PROJECT Build on crave.io failed. $(env TZ=Asia/kolkata date). Log: $output_url"
-          echo "Oh no, the script failed."
-          cleanup_self
-          exit 1 
-       fi
-   fi
 }
 
 # Function to apply local patches (if necessary) before building.
@@ -337,12 +383,64 @@ apply_gerrit_patches() {
 }
 
 #######################################
-# 4. INITIALIZE REPO & SYNC CODE
+# 1. INITIAL SETUP
+#######################################
+# Initialization notification.
+notifyStage "Initiating build..."
+
+# Set the Android build top directory and change into it.
+export ANDROID_BUILD_TOP="/tmp/src/android"
+cd "$ANDROID_BUILD_TOP" || { echo "[ERROR] Failed to cd to $ANDROID_BUILD_TOP"; exit 1; }
+
+# Define an absolute log file path.
+LOG_FILE="$ANDROID_BUILD_TOP/build.log"
+
+# Redirect all output to LOG_FILE while still printing to the console
+touch "$LOG_FILE"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+# Source global and user-specific environment variables and credentials.
+source /home/admin/.profile
+source /home/admin/.bashrc
+source /tmp/crave_bashrc
+
+# Enable verbose mode for debugging.
+set -v
+
+#######################################
+# 2. DEFINE BUILD VARIABLES & ENVIRONMENT
+#######################################
+notifyStage "Defining build variables and environment..."
+
+PROJECT=${PROJECT:-LineageOS}
+PRODUCT_NAME=${PRODUCT_NAME:-lineage_RMX2001L1}
+DEVICE=${DEVICE:-RMX2001L1}
+BUILD_FLAVOR=${BUILD_FLAVOR:-gms}  # alternatives: gms or vanilla
+RELEASE_TYPE=${RELEASE_TYPE:-user}  # e.g., user build
+RELEASE_VERSION=${RELEASE_VERSION:-22.1}
+REPO_URL="-u https://github.com/accupara/los22.git -b lineage-22.1 --git-lfs"
+
+# Export build system variables.
+export BUILD_USERNAME=user
+export BUILD_HOSTNAME=localhost
+export KBUILD_BUILD_USER=user
+export KBUILD_BUILD_HOST=localhost
+
+# Defines that env variable are set ; default to 0 if not set.
+ENV_DEFINED=1
+
+# Start a timer to measure build duration.
+SECONDS=0
+START_TIME=$(env TZ=Asia/kolkata date)
+
+#######################################
+# 3. INITIALIZE REPO & SYNC CODE
 #######################################
 if echo "$@" | grep resume >/dev/null; then
     echo "Resuming previous session..."
 else
-    repo init $REPO_URL ; check_fail
+    notifyStage "Repo syncing in progress..."
+    repo init $REPO_URL || failStage "Repo init failed"
     cleanup_self
     # Let's curl xmls before repo sync.
     # Ensure the local_manifests directory exists.
@@ -350,13 +448,12 @@ else
 
     # Download the device tree manifest.
     curl -o .repo/local_manifests/roomservice.xml \
-         https://raw.githubusercontent.com/gopaldhanve2003/local_manifests/refs/heads/lineage-21.1/roomservice.xml || { echo "Failed to download roomservice.xml"; check_fail; }
-
+         https://raw.githubusercontent.com/gopaldhanve2003/local_manifests/refs/heads/lineage-21.1/roomservice.xml || failStage "Failed to download Roomservice"
     # Download the extra manifest for vendor extras.
     curl -o .repo/local_manifests/extra.xml \
-         https://raw.githubusercontent.com/gopaldhanve2003/android_vendor_extra/refs/heads/main/extra.xml || { echo "Failed to download extra.xml"; check_fail; }
+         https://raw.githubusercontent.com/gopaldhanve2003/android_vendor_extra/refs/heads/main/extra.xml || failStage "Failed to download extra.xml"
     # Repo sync.
-    /opt/crave/resync.sh ; check_fail
+    /opt/crave/resync.sh || failStage "Repo sync failed"
 fi
 
 # Clone vendor_extra.
@@ -366,21 +463,21 @@ git clone https://github.com/gopaldhanve2003/android_vendor_extra --depth 1 -b m
 repo forall -c 'if [ -f .gitattributes ] && grep -q "filter=lfs" .gitattributes; then git lfs install && git lfs fetch && git lfs checkout; fi'
 
 #######################################
-# 5. SANITIZE CREDENTIALS AND SYNC KEYS FOR SIGNING
+# 4. SANITIZE CREDENTIALS AND SYNC KEYS FOR SIGNING
 #######################################
-grep -vE "BKEY_ID|BUCKET_NAME|KEY_ENCRYPTION_PASSWORD|BAPP_KEY|KEY_PASSWORD|TG_TOKEN|TG_CID|NTFYSUB" /tmp/crave_bashrc > /tmp/crave_bashrc.1
+grep -vE "BKEY_ID|BUCKET_NAME|KEY_ENCRYPTION_PASSWORD|BAPP_KEY|KEY_PASSWORD|TG_TOKEN|TG_CID" /tmp/crave_bashrc > /tmp/crave_bashrc.1
 mv /tmp/crave_bashrc.1 /tmp/crave_bashrc
 
 # Get keys from B2Bucket for signing.
 set +v
 sudo apt update
 sudo apt --yes install python3-virtualenv virtualenv python3-pip-whl
-virtualenv /home/admin/venv ; check_fail
+virtualenv /home/admin/venv || failStage "Virtualenv setup failed"
 source /home/admin/venv/bin/activate
-pip install --upgrade b2 ; check_fail
-b2 account authorize "$BKEY_ID" "$BAPP_KEY" > /dev/null 2>&1 ; check_fail
+pip install --upgrade b2 || failStage "B2 upgrade failed"
+b2 account authorize "$BKEY_ID" "$BAPP_KEY" > /dev/null 2>&1 || failStage "B2  authorization failed"
 mkdir -p vendor/lineage-priv/keys
-b2 sync "b2://$BUCKET_NAME/keys" vendor/lineage-priv/keys > /dev/null 2>&1 ; check_fail
+b2 sync "b2://$BUCKET_NAME/keys" vendor/lineage-priv/keys > /dev/null 2>&1 || failStage "B2 sync failed"
 deactivate
 set -v
 
@@ -414,7 +511,7 @@ sleep 15
 set +v
 
 #######################################
-# 6. DEVICE & BUILD VARIANT SETUP
+# 5. DEVICE & BUILD VARIANT SETUP
 #######################################
 # Allow an external override of BUILD_FLAVOR using WITH_GMS.
 if [ "${WITH_GMS}" == "true" ]; then
@@ -422,9 +519,6 @@ if [ "${WITH_GMS}" == "true" ]; then
 elif [ "${WITH_GMS}" == "false" ]; then
     BUILD_FLAVOR="vanilla"
 fi
-
-echo -e "\e[32m[INFO]\e[0m Starting build for device: ${DEVICE} (flavour: ${BUILD_FLAVOR})"
-notify "[INFO] Starting build for device: ${DEVICE} (flavour: ${BUILD_FLAVOR})"
 
 ## Set Git username and email silently (suppress output and errors)
 git config --global user.name "$NAME" > /dev/null 2>&1
@@ -435,13 +529,14 @@ unset NAME MAIL
 
 # If this is a GMS build, apply the necessary patches.
 if [[ "${BUILD_FLAVOR}" == "gms" ]]; then
-    echo -e "\e[32m[INFO]\e[0m GMS build selected: applying patches before build..."
-    notify "[INFO] GMS build selected: applying patches before build..."
-    apply_patches "$PWD/vendor/extra/patches" "m/lineage-22.1"
+    echo -e "GMS build selected: applying local patches..."
+    notifyStage "Applying local patches..."
+    apply_patches "$PWD/vendor/extra/patches" "m/lineage-22.1" || failStage "Local patches failed"
 fi
 
 # Call apply_gerrit_patches function.
 echo "Applying Gerrit patches..."
+notifyStage "Applying Gerrit patches..."
 apply_gerrit_patches
 
 ## Unset Git username and email
@@ -449,25 +544,29 @@ git config --global --unset user.name > /dev/null 2>&1
 git config --global --unset user.email > /dev/null 2>&1
 
 #######################################
-# 7. BUILD THE ROM
+# 6. BUILD THE ROM
 #######################################
+echo -e "Starting build for device: ${DEVICE} (flavour: ${BUILD_FLAVOR})"
+notifyStage "Starting actual build..."
 cd "$ANDROID_BUILD_TOP"
-source build/envsetup.sh ; check_fail
-breakfast "${DEVICE}" "$RELEASE_TYPE" ; check_fail
-m installclean ; check_fail
-echo -e "\e[32m[INFO]\e[0m Running m bacon for ${DEVICE}"
-notify "[INFO] Running m bacon for ${DEVICE}"
-m bacon ; check_fail
+source build/envsetup.sh || failStage "Env setup failed"
+breakfast "${DEVICE}" "$RELEASE_TYPE" || failStage "Breakfast failed"
+m installclean || failStage "Clean build failed"
+echo -e "Running m bacon for ${DEVICE}"
+notifyStage "Build started"
+# Run m bacon in background for progress monitoring.
+m bacon &
+BUILD_PID=$!
+monitorProgress "$BUILD_PID"
+waitForBuild "$BUILD_PID"
 
 # Re-enable verbose mode for final steps.
 set -v
 
 #######################################
-# 8. POST-BUILD PROCESSING & UPLOAD
+# 7. POST-BUILD PROCESSING & UPLOAD
 #######################################
-# Notify that the build succeeded.
 SUCCESS_TIME=$(env TZ=Asia/kolkata date)
-notify "Build $PROJECT GAPPS on crave.io succeeded. $SUCCESS_TIME."
 
 # Search for the generated ZIP file based on PROJECT (latest file by modification time)
 ZIP_FILE=$(find out/target/product/"${DEVICE}" -maxdepth 1 -type f -iname "*${PROJECT}*${DEVICE}*.zip" -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n 1 | cut -d' ' -f2-)
@@ -481,26 +580,23 @@ cp "$ZIP_FILE" .
 GO_FILE=$(pwd)/$(basename "$ZIP_FILE")
 
 # Download and execute the file upload script.
-curl -o goupload.sh -L https://raw.githubusercontent.com/Joe7500/Builds/refs/heads/main/crave/gofile.sh ; check_fail
-bash goupload.sh "$GO_FILE" ; check_fail
+curl -o goupload.sh -L https://raw.githubusercontent.com/Joe7500/Builds/refs/heads/main/crave/gofile.sh || failStage "Unable to download Upload script"
+bash goupload.sh "$GO_FILE" || failStage "Gofile upload failed"
 GO_LINK=$(cat GOFILE.txt)
 
-# Send upload notification.
-notify "$PROJECT $(basename "$GO_FILE") $GO_LINK"
+#######################################
+# 8. FINAL NOTIFICATIONS & CLEANUP
+#######################################
 # Echo just in case notification fails.
-echo -e "\e[32m[INFO]\e[0m $PROJECT $(basename "$GO_FILE") $GO_LINK"
-
-#######################################
-# 9. FINAL NOTIFICATIONS & CLEANUP
-#######################################
+echo -e "$PROJECT $(basename "$GO_FILE") $GO_LINK"
 TIME_TAKEN=$(printf '%dh:%dm:%ds\n' $((SECONDS/3600)) $((SECONDS%3600/60)) $((SECONDS%60)))
-notify "$PRODUCT_NAME Build on crave.io completed. $TIME_TAKEN. $(env TZ=Asia/kolkata date)."
+finalizeMsg "$TIME_TAKEN" "$GO_LINK"
 
 # Run cleanup to remove temporary and sensitive files.
 cleanup_self
 
 # Unset notification variables.
-unset TG_TOKEN TG_CID NTFYSUB
+unset TG_TOKEN TG_CID
 
 # Restore default output and remove LOG_FILE.
 exec > /dev/tty 2>&1
