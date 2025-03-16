@@ -199,12 +199,18 @@ apply_patches() {
 }
 
 # This function applies Gerrit patches.
-# Each input should be either a Gerrit URL or a full cherry-pick command.
+# Each input should be either a Gerrit URL or a full cherry-pick command or set the GERRIT_PATCH environment variable seperated by pipe.
 apply_gerrit_patches() {
     if [ "$#" -eq 0 ]; then
-        echo "Usage: apply_gerrit_patches <gerrit_patch_input1> [<gerrit_patch_input2> ...]"
-        echo "  Each input should be a Gerrit URL or a full cherry-pick command."
-        return 1
+        if [ -n "$GERRIT_PATCH" ]; then
+            IFS='|' read -r -a GERRIT_PATCH_INPUTS <<< "$GERRIT_PATCH"
+            set -- "${GERRIT_PATCH_INPUTS[@]}"
+        else
+            echo "Usage: apply_gerrit_patches <gerrit_patch_input1> [<gerrit_patch_input2> ...]"
+            echo "  Each input should be a Gerrit URL or a full cherry-pick command."
+            echo "  Alternatively, you can set the GERRIT_PATCH environment variable with patch inputs separated by the '|' character."
+            return 1
+        fi
     fi
 
     # Helper function: Convert a target repo string to a local directory path.
@@ -440,16 +446,9 @@ if [[ "${BUILD_FLAVOR}" == "gms" ]]; then
     apply_patches "$PWD/vendor/extra/patches" "m/lineage-22.1"
 fi
 
-# Now that the repo is populated and local patches applied,
-# If the GERRIT_PATCH environment variable is set,split it into an array using semicolons as delimiters.
-if [ -n "$GERRIT_PATCH" ]; then
-    IFS=';' read -r -a GERRIT_PATCH_INPUTS <<< "$GERRIT_PATCH"
-fi
-# If any Gerrit patch inputs are provided in the environment,call the apply_gerrit_patches function with those inputs.
-if [ ${#GERRIT_PATCH_INPUTS[@]} -gt 0 ]; then
-    echo "Applying Gerrit patches..."
-    apply_gerrit_patches "${GERRIT_PATCH_INPUTS[@]}"
-fi
+# Call apply_gerrit_patches function.
+echo "Applying Gerrit patches..."
+apply_gerrit_patches
 
 ## Unset Git username and email
 git config --global --unset user.name > /dev/null 2>&1
