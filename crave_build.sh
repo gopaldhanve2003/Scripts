@@ -105,7 +105,7 @@ failStage() {
   fi
   echo "$log_content" > err.log
   local log_url
-  log_url=$(curl -s --data-binary @"err.log" https://paste.rs)
+  log_url=$(upload_log "err.log" 2>&1)
   notifyMsg failed "$log_url"
   exit 1
 }
