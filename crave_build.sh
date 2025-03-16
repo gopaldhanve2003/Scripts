@@ -366,13 +366,7 @@ git clone https://github.com/gopaldhanve2003/android_vendor_extra --depth 1 -b m
 repo forall -c 'if [ -f .gitattributes ] && grep -q "filter=lfs" .gitattributes; then git lfs install && git lfs fetch && git lfs checkout; fi'
 
 #######################################
-# Process script arguments to collect arguments.
-# This should be done now so the inputs are stored for later use.
-#######################################
-process_arguments "$@"
-
-#######################################
-# 7. SANITIZE CREDENTIALS
+# 5. SANITIZE CREDENTIALS AND SYNC KEYS FOR SIGNING
 #######################################
 grep -vE "BKEY_ID|BUCKET_NAME|KEY_ENCRYPTION_PASSWORD|BAPP_KEY|KEY_PASSWORD|TG_TOKEN|TG_CID|NTFYSUB" /tmp/crave_bashrc > /tmp/crave_bashrc.1
 mv /tmp/crave_bashrc.1 /tmp/crave_bashrc
@@ -420,7 +414,7 @@ sleep 15
 set +v
 
 #######################################
-# 5. DEVICE & BUILD VARIANT SETUP
+# 6. DEVICE & BUILD VARIANT SETUP
 #######################################
 # Allow an external override of BUILD_FLAVOR using WITH_GMS.
 if [ "${WITH_GMS}" == "true" ]; then
@@ -455,7 +449,7 @@ git config --global --unset user.name > /dev/null 2>&1
 git config --global --unset user.email > /dev/null 2>&1
 
 #######################################
-# 6. BUILD THE ROM
+# 7. BUILD THE ROM
 #######################################
 cd "$ANDROID_BUILD_TOP"
 source build/envsetup.sh ; check_fail
@@ -469,7 +463,7 @@ m bacon ; check_fail
 set -v
 
 #######################################
-# 7. POST-BUILD PROCESSING & UPLOAD
+# 8. POST-BUILD PROCESSING & UPLOAD
 #######################################
 # Notify that the build succeeded.
 SUCCESS_TIME=$(env TZ=Asia/kolkata date)
@@ -497,7 +491,7 @@ notify "$PROJECT $(basename "$GO_FILE") $GO_LINK"
 echo -e "\e[32m[INFO]\e[0m $PROJECT $(basename "$GO_FILE") $GO_LINK"
 
 #######################################
-# 8. FINAL NOTIFICATIONS & CLEANUP
+# 9. FINAL NOTIFICATIONS & CLEANUP
 #######################################
 TIME_TAKEN=$(printf '%dh:%dm:%ds\n' $((SECONDS/3600)) $((SECONDS%3600/60)) $((SECONDS%60)))
 notify "$PRODUCT_NAME Build on crave.io completed. $TIME_TAKEN. $(env TZ=Asia/kolkata date)."
