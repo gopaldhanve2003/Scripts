@@ -175,6 +175,7 @@ cleanup_self () {
 
     rm -f goupload.sh
     rm -f GOFILE.txt
+    rm -f err.log
 }
 
 # Function to upload a log file to paste.rs.
@@ -398,6 +399,29 @@ apply_gerrit_patches() {
     echo "All Gerrit patches applied successfully."
     return 0
 }
+
+# Comprehensive cleanup function to run on script exit.
+# This function calls cleanup_self(), unsets build env vars(and Git username/email), restores stdout/stderr, and removes LOG_FILE.
+cleanup_all() {
+    # Run cleanup_self to remove script-generated temporary files.
+    cleanup_self
+
+    # Unset environment variables used during the build process.
+    unset TG_TOKEN TG_CID NAME MAIL BUCKET_NAME KEY_ENCRYPTION_PASSWORD BKEY_ID BAPP_KEY KEY_PASSWORD ENV_DEFINED PROJECT RELEASE_VERSION DEVICE BUILD_FLAVOR RELEASE_TYPE REPO_URL ANDROID_BUILD_TOP
+    
+    ## Unset Git username and email set during the build.
+    git config --global --unset user.name > /dev/null 2>&1
+    git config --global --unset user.email > /dev/null 2>&1
+    
+    # Restore default stdout and stderr for clean terminal output.
+    exec > /dev/tty 2>&1
+
+    # Remove the build log file if it was set.
+    [ -n "$LOG_FILE" ] && rm -rf "$LOG_FILE"
+}
+
+# Set a trap so that cleanup_all runs when the script exits.
+trap cleanup_all EXIT
 
 #######################################
 # 1. INITIAL SETUP
