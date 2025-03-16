@@ -402,8 +402,14 @@ apply_gerrit_patches() {
 #######################################
 # 1. INITIAL SETUP
 #######################################
+
 # Initialization notification.
 notifyStage "Initiating build..."
+
+# Start a timer to measure build duration and echo build intialization time.
+SECONDS=0
+START_TIME=$(env TZ=Asia/Kolkata date)
+echo -e "Initiating build at $START_TIME"
 
 # Set the Android build top directory and change into it.
 export ANDROID_BUILD_TOP="/tmp/src/android"
@@ -445,10 +451,6 @@ export KBUILD_BUILD_HOST=localhost
 
 # Defines that env variable are set ; default to 0 if not set.
 ENV_DEFINED=1
-
-# Start a timer to measure build duration.
-SECONDS=0
-START_TIME=$(env TZ=Asia/kolkata date)
 
 #######################################
 # 3. INITIALIZE REPO & SYNC CODE
@@ -583,7 +585,6 @@ set -v
 #######################################
 # 7. POST-BUILD PROCESSING & UPLOAD
 #######################################
-SUCCESS_TIME=$(env TZ=Asia/kolkata date)
 
 # Search for the generated ZIP file based on PROJECT (latest file by modification time)
 ZIP_FILE=$(find out/target/product/"${DEVICE}" -maxdepth 1 -type f -iname "*${PROJECT}*${DEVICE}*.zip" -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n 1 | cut -d' ' -f2-)
@@ -604,9 +605,13 @@ GO_LINK=$(cat GOFILE.txt)
 #######################################
 # 8. FINAL NOTIFICATIONS & CLEANUP
 #######################################
-# Echo just in case notification fails.
-echo -e "$PROJECT $(basename "$GO_FILE") $GO_LINK"
+
+# Calculate Time taken for build process and echo build finishing time.
 TIME_TAKEN=$(printf '%dh:%dm:%ds\n' $((SECONDS/3600)) $((SECONDS%3600/60)) $((SECONDS%60)))
+SUCCESS_TIME=$(env TZ=Asia/Kolkata date)
+echo -e "Build finished at $SUCCESS_TIME (Total runtime: $TIME_TAKEN)"
+
+# Final Notification with time taken and download link
 finalizeMsg "$TIME_TAKEN" "$GO_LINK"
 
 # Run cleanup to remove temporary and sensitive files.
