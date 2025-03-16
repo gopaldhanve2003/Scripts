@@ -84,12 +84,26 @@ notifyStage() {
   notifyMsg progress "$stage_msg"
 }
 
-# failStage is invoked when a command fails.
-# It captures the last 100 lines of LOG_FILE, uploads them to paste.rs, and notifies Telegram.
+# failStage is invoked when a command fails and captures log details on error and notifies Telegram.
+# If called with "from_wait", it extracts the log starting from the first occurrence of "FAILED:".
 failStage() {
   local stage="$1"
+  local mode="$2"   # Internal flag; not shown in the Telegram message.
   fail_stage="$stage"
-  tail -n 100 "$LOG_FILE" > err.log
+  local log_content
+  if [ "$mode" == "from_wait" ]; then
+    # Find the line number of the first exact occurrence of "FAILED:" (case-sensitive, whole word).
+    local start_line
+    start_line=$(grep -n -w -F "FAILED:" "$LOG_FILE" | head -n 1 | cut -d: -f1)
+    if [ -n "$start_line" ]; then
+      log_content=$(sed -n "${start_line},\$p" "$LOG_FILE")
+    else
+      log_content=$(tail -n 100 "$LOG_FILE")
+    fi
+  else
+    log_content=$(tail -n 100 "$LOG_FILE")
+  fi
+  echo "$log_content" > err.log
   local log_url
   log_url=$(curl -s --data-binary @"err.log" https://paste.rs)
   notifyMsg failed "$log_url"
@@ -119,13 +133,13 @@ monitorProgress() {
 }
 
 # waitForBuild waits for the build process to finish.
-# On failure, it calls failStage with a custom message.
+# If the build fails, it calls failStage with the "from_wait" flag.
 waitForBuild() {
   local build_pid="$1"
   wait "$build_pid"
   local ec=$?
   if [ $ec -ne 0 ]; then
-    failStage "Build failed"
+    failStage "Build failed" "from_wait"
   fi
 }
 
