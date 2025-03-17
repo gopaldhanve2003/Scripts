@@ -18,8 +18,10 @@ Build started for ${DEVICE}"
 
 # formatMsg constructs a full HTML message.
 # Modes:
-#   final   → expects build duration and download link.
-#   failed  → expects a log URL and uses the custom stage (fail_stage).
+#   final   → expects final progress, duration, and download link.
+#             Replaces dynamic progress with "(complete)".
+#   failed  → expects final progress and a log URL.
+#             Replaces dynamic progress with "(failed)".
 #   progress→ expects a raw progress string and reformats it.
 formatMsg() {
   local mode="$1"
@@ -28,17 +30,25 @@ formatMsg() {
   header=$(buildHeader)
   case "$mode" in
     final)
-      local duration="$1"; shift
-      local dl="$1"
+      local final_prog="$1"
+      local duration="$2"
+      local dl="$3"
+      local perc
+      perc=$(echo "$final_prog" | grep -oP '^\d+%')
+      final_prog="${perc} (complete)"
       echo "$header
-Status: <b>100% (complete)</b>
+Status: <b>${final_prog}</b>
 Time: ${duration}
 Download: ${dl}"
       ;;
     failed)
-      local log_url="$1"
+      local final_prog="$1"
+      local log_url="$2"
+      local perc
+      perc=$(echo "$final_prog" | grep -oP '^\d+%')
+      final_prog="${perc} (failed)"
       echo "$header
-Status: <b>${fail_stage}</b>. Log: ${log_url}"
+Status: <b>${final_prog}</b>. Log: ${log_url}"
       ;;
     progress)
       local raw="$1"
@@ -84,15 +94,14 @@ notifyStage() {
   notifyMsg progress "$stage_msg"
 }
 
-# failStage is invoked when a command fails and captures log details on error and notifies Telegram.
-# If called with "from_wait", it extracts the log starting from the first occurrence of "FAILED:".
+# failStage captures the error log and uploads it.
+# If called with "from_wait", it echoes the log URL and returns (does not exit).
 failStage() {
   local stage="$1"
-  local mode="$2"   # Internal flag; not shown in the Telegram message.
+  local mode="$2"   # "from_wait" means deferred notification.
   fail_stage="$stage"
   local log_content
   if [ "$mode" == "from_wait" ]; then
-    # Find the line number of the first exact occurrence of "FAILED:" (case-sensitive, whole word).
     local start_line
     start_line=$(grep -n -w -F "FAILED:" "$LOG_FILE" | head -n 1 | cut -d: -f1)
     if [ -n "$start_line" ]; then
@@ -106,16 +115,22 @@ failStage() {
   echo "$log_content" > err.log
   local log_url
   log_url=$(upload_log "err.log" 2>&1)
-  notifyMsg failed "$log_url"
+  if [ "$mode" == "from_wait" ]; then
+    echo "$log_url"
+    return 0
+  else
+    notifyMsg failed "$log_url"
+    exit 1
+  fi
   exit 1
 }
 
 # monitorProgress monitors build progress by scanning LOG_FILE and updating Telegram.
+# It updates the global variable LAST_PROGRESS.
 monitorProgress() {
   local build_pid="$1"
   local last_prog=""
   get_prog() {
-    # Reverse the log file to capture only the section after the last "Starting ninja"
     tac "$LOG_FILE" | awk '/Starting ninja/ {found=1} found {print}' | tac | \
       grep -oP '\[\s*\d+%\s+\d+/\d+' | tail -n1 | \
       sed -E 's/\[\s*//; s/[[:space:]]+/ (/; s/$/)/'
@@ -126,27 +141,46 @@ monitorProgress() {
     if [[ -n "$prog_line" && "$prog_line" != "$last_prog" ]]; then
       notifyMsg progress "$prog_line"
       last_prog="$prog_line"
+      LAST_PROGRESS="$prog_line"
     fi
     sleep 10
   done
 }
 
 # waitForBuild waits for the build process to finish.
-# If the build fails, it calls failStage with the "from_wait" flag.
+# If the build fails, it calls failStage in "from_wait" mode, then calls finalizeMsg with outcome "failed" and exits.
 waitForBuild() {
   local build_pid="$1"
   wait "$build_pid"
   local ec=$?
+  LAST_PROGRESS=$(tac "$LOG_FILE" | awk '/Starting ninja/ {found=1} found {print}' | tac | \
+    grep -oP '\[\s*\d+%\s+\d+/\d+' | tail -n1 | sed -E 's/\[\s*//; s/[[:space:]]+/ (/; s/$/)/')
   if [ $ec -ne 0 ]; then
-    failStage "Build failed" "from_wait"
+    local log_url
+    log_url=$(failStage "from_wait" "from_wait")
+    finalizeMsg "failed" "$LAST_PROGRESS" "" "" "$log_url"
+    exit 1
   fi
 }
 
-# finalizeMsg sends the final success notification.
+# finalizeMsg sends the final Telegram message based on the build outcome.
+# For "success", it replaces the dynamic part with "(complete)" and appends duration and download link.
+# For "failed", it replaces it with "(failed)" and appends the log URL.
 finalizeMsg() {
-  local duration="$1"
-  local dl="$2"
-  notifyMsg final "$duration" "$dl"
+  local outcome="$1"
+  local final_prog="$2"
+  local duration="$3"
+  local dl="$4"
+  local log_url="$5"
+  if [ "$outcome" == "failed" ]; then
+    local final_status
+    final_status=$(echo "$final_prog" | sed -E 's/\([^)]+\)/(failed)/')
+    notifyMsg failed "$final_status" "$log_url"
+  else
+    local final_status
+    final_status=$(echo "$final_prog" | sed -E 's/\([^)]+\)/(complete)/')
+    notifyMsg final "$final_status" "$duration" "$dl"
+  fi
 }
 
 # --- Non-Telegram Helper Functions ---
@@ -633,8 +667,8 @@ TIME_TAKEN=$(printf '%dh:%dm:%ds\n' $((SECONDS/3600)) $((SECONDS%3600/60)) $((SE
 SUCCESS_TIME=$(env TZ=Asia/Kolkata date)
 echo -e "Build finished at $SUCCESS_TIME (Total runtime: $TIME_TAKEN)"
 
-# Final Notification with time taken and download link
-finalizeMsg "$TIME_TAKEN" "$GO_LINK"
+# Final Notification with outcome, progress, duration, and download link
+finalizeMsg "success" "$LAST_PROGRESS" "$TIME_TAKEN" "$GO_LINK"
 
 # Pause briefly before exiting.
 sleep 60
