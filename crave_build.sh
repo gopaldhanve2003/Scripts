@@ -609,11 +609,10 @@ set -v
 # 7. POST-BUILD PROCESSING & UPLOAD
 #######################################
 
-# Search for the generated ZIP file based on PROJECT (latest file by modification time)
-ZIP_FILE=$(find out/target/product/"${DEVICE}" -maxdepth 1 -type f -iname "*${PROJECT}*${DEVICE}*.zip" -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n 1 | cut -d' ' -f2-)
+# Search for the generated ZIP file based on Device (latest file by modification time)
+ZIP_FILE=$(find out/target/product/"${DEVICE}" -maxdepth 1 -type f -iname "*${DEVICE}*.zip" -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n 1 | cut -d' ' -f2-)
 if [ -z "$ZIP_FILE" ]; then
-    echo "[ERROR] No ZIP file found matching ${PROJECT} (case-insensitive)."
-    exit 1
+    failStage "No ZIP file found for device ${DEVICE}"
 fi
 
 # Copy the generated ZIP file to the current directory.
