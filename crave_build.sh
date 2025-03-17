@@ -636,16 +636,6 @@ echo -e "Build finished at $SUCCESS_TIME (Total runtime: $TIME_TAKEN)"
 # Final Notification with time taken and download link
 finalizeMsg "$TIME_TAKEN" "$GO_LINK"
 
-# Run cleanup to remove temporary and sensitive files.
-cleanup_self
-
-# Unset notification variables.
-unset TG_TOKEN TG_CID
-
-# Restore default output and remove LOG_FILE.
-exec > /dev/tty 2>&1
-rm -rf "$LOG_FILE"
-
 # Pause briefly before exiting.
 sleep 60
 exit 0
