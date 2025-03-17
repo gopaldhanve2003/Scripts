@@ -113,20 +113,19 @@ failStage() {
 # monitorProgress monitors build progress by scanning LOG_FILE and updating Telegram.
 monitorProgress() {
   local build_pid="$1"
-  local last_pct=0
+  local last_prog=""
   get_prog() {
-    sed -n '/Starting ninja/,$p' "$LOG_FILE" | \
-      grep -oP '\[\s*\d+%\s+\d+/\d+' | \
-      tail -n 1 | \
+    # Reverse the log file to capture only the section after the last "Starting ninja"
+    tac "$LOG_FILE" | awk '/Starting ninja/ {found=1} found {print}' | tac | \
+      grep -oP '\[\s*\d+%\s+\d+/\d+' | tail -n1 | \
       sed -E 's/\[\s*//; s/[[:space:]]+/ (/; s/$/)/'
   }
   while kill -0 "$build_pid" 2>/dev/null; do
-    local prog_line curr_pct
+    local prog_line
     prog_line=$(get_prog)
-    curr_pct=$(echo "$prog_line" | grep -oP '^\d+(?=%)')
-    if [[ "$curr_pct" =~ ^[0-9]+$ ]] && (( curr_pct > last_pct )); then
+    if [[ -n "$prog_line" && "$prog_line" != "$last_prog" ]]; then
       notifyMsg progress "$prog_line"
-      last_pct=$curr_pct
+      last_prog="$prog_line"
     fi
     sleep 10
   done
