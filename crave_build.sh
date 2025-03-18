@@ -649,13 +649,9 @@ if [ -z "$ZIP_FILE" ]; then
     failStage "No ZIP file found for device ${DEVICE}"
 fi
 
-# Copy the generated ZIP file to the current directory.
-cp "$ZIP_FILE" .
-GO_FILE=$(pwd)/$(basename "$ZIP_FILE")
-
 # Download and execute the file upload script.
 curl -o goupload.sh -L https://raw.githubusercontent.com/Joe7500/Builds/refs/heads/main/crave/gofile.sh || failStage "Unable to download Upload script"
-bash goupload.sh "$GO_FILE" || failStage "Gofile upload failed"
+bash goupload.sh "$ZIP_FILE" || failStage "Gofile upload failed"
 GO_LINK=$(cat GOFILE.txt)
 
 #######################################
