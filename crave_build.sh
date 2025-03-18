@@ -131,9 +131,11 @@ monitorProgress() {
   local build_pid="$1"
   local last_prog=""
   get_prog() {
-    tac "$LOG_FILE" | awk '/Starting ninja/ {found=1} found {print}' | tac | \
-      grep -oP '\[\s*\d+%\s+\d+/\d+' | tail -n1 | \
-      sed -E 's/\[\s*//; s/[[:space:]]+/ (/; s/$/)/'
+    # Extract only the log block after the last "Starting ninja" marker
+    local block
+    block=$(awk '/Starting ninja/ {block="";} {block = block $0 "\n";} END {printf "%s", block}' "$LOG_FILE")
+    # From that block, extract the progress pattern and format it (e.g., "1% (248/23693)")
+    echo "$block" | grep -Po '\d+% \d+/\d+' | tail -n1 | sed -E 's/ / \(/; s/$/)/'
   }
   while kill -0 "$build_pid" 2>/dev/null; do
     local prog_line
@@ -143,7 +145,7 @@ monitorProgress() {
       last_prog="$prog_line"
       LAST_PROGRESS="$prog_line"
     fi
-    sleep 10
+    sleep 5
   done
 }
 
