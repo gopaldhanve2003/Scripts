@@ -621,6 +621,11 @@ apply_gerrit_patches
 git config --global --unset user.name > /dev/null 2>&1
 git config --global --unset user.email > /dev/null 2>&1
 
+# Temp fix
+sed -i 's|@*android:color/materialColorSecondary|@*android:attr/materialColorSecondary|g' vendor/pixel/gms/common/proprietary/product/overlay/PixelDocumentsUIGoogleOverlay_GMS/res/values/themes.xml
+
+sed -i 's|@*android:color/materialColorSecondary|@*android:attr/materialColorSecondary|g' vendor/pixel/gms/common/proprietary/product/overlay/PixelDocumentsUIGoogleOverlay_GMS/res/values-night/themes.xml
+
 #######################################
 # 6. BUILD THE ROM
 #######################################
