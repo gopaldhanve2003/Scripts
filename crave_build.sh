@@ -125,18 +125,20 @@ failStage() {
   exit 1
 }
 
+
+# get_prog extracts the latest progress after the last "Starting ninja" line from LOG_FILE.
+get_prog() {
+  local block
+  block=$(awk '/Starting ninja/ {block="";} {block = block $0 "\n";} END {printf "%s", block}' "$LOG_FILE")
+  echo "$block" | grep -Po '\d+% \d+/\d+' | tail -n1 | sed -E 's/ / \(/; s/$/)/'
+}
+
 # monitorProgress monitors build progress by scanning LOG_FILE and updating Telegram.
-# It updates the global variable LAST_PROGRESS.
+# It updates LAST_PROGRESS when new progress is found.
 monitorProgress() {
   local build_pid="$1"
   local last_prog=""
-  get_prog() {
-    # Extract only the log block after the last "Starting ninja" marker
-    local block
-    block=$(awk '/Starting ninja/ {block="";} {block = block $0 "\n";} END {printf "%s", block}' "$LOG_FILE")
-    # From that block, extract the progress pattern and format it (e.g., "1% (248/23693)")
-    echo "$block" | grep -Po '\d+% \d+/\d+' | tail -n1 | sed -E 's/ / \(/; s/$/)/'
-  }
+
   while kill -0 "$build_pid" 2>/dev/null; do
     local prog_line
     prog_line=$(get_prog)
@@ -155,8 +157,9 @@ waitForBuild() {
   local build_pid="$1"
   wait "$build_pid"
   local ec=$?
-  LAST_PROGRESS=$(tac "$LOG_FILE" | awk '/Starting ninja/ {found=1} found {print}' | tac | \
-    grep -oP '\[\s*\d+%\s+\d+/\d+' | tail -n1 | sed -E 's/\[\s*//; s/[[:space:]]+/ (/; s/$/)/')
+
+  LAST_PROGRESS=$(get_prog)
+
   if [ $ec -ne 0 ]; then
     local log_url
     log_url=$(failStage "from_wait" "from_wait")
