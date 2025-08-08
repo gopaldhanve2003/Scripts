@@ -544,34 +544,47 @@ git clone https://github.com/gopaldhanve2003/android_vendor_extra --depth 1 -b m
 repo forall -c 'if [ -f .gitattributes ] && grep -q "filter=lfs" .gitattributes; then git lfs install && git lfs fetch && git lfs checkout; fi'
 
 #######################################
-# 4.SYNC KEYS FOR SIGNING
+# 4. SYNC KEYS FOR SIGNING
 #######################################
+# If B2 Bucket credentials are found, proceed to key syncing and signing setup
+if [ -n "$BKEY_ID" ] && [ -n "$BAPP_KEY" ] && [ -n "$BUCKET_NAME" ]; then
+  echo "[INFO] B2 credentials found. Syncing signing keys..."
 
-# Get keys from B2Bucket for signing.
-set +v
-sudo apt update
-sudo apt --yes install python3-virtualenv virtualenv python3-pip-whl
-virtualenv /home/admin/venv || failStage "Virtualenv setup failed"
-source /home/admin/venv/bin/activate
-pip install --upgrade b2 || failStage "B2 upgrade failed"
-b2 account authorize "$BKEY_ID" "$BAPP_KEY" > /dev/null 2>&1 || failStage "B2  authorization failed"
-mkdir -p vendor/lineage-priv/keys
-b2 sync "b2://$BUCKET_NAME/keys" vendor/lineage-priv/keys > /dev/null 2>&1 || failStage "B2 sync failed"
-deactivate
-set -v
+  # Silence command output to reduce log noise
+  set +v
 
-# Unset some variables.
-unset BUCKET_NAME KEY_ENCRYPTION_PASSWORD BKEY_ID BAPP_KEY KEY_PASSWORD
+  # Ensure Python tools are installed
+  sudo apt update
+  sudo apt --yes install python3-virtualenv virtualenv python3-pip-whl
 
-# Let's create neccessary files for signing
-# If keys.mk does not exist, create it.
-if [ ! -f vendor/lineage-priv/keys/keys.mk ]; then
-  echo "PRODUCT_DEFAULT_DEV_CERTIFICATE := vendor/lineage-priv/keys/releasekey" > vendor/lineage-priv/keys/keys.mk
-fi
+  # Create and activate Python virtualenv
+  virtualenv /home/admin/venv || failStage "Virtualenv setup failed"
+  source /home/admin/venv/bin/activate
 
-# If BUILD.bazel does not exist, create it.
-if [ ! -f vendor/lineage-priv/keys/BUILD.bazel ]; then
-cat <<EOF > vendor/lineage-priv/keys/BUILD.bazel
+  # Install or upgrade Backblaze B2 CLI
+  pip install --upgrade b2 || failStage "B2 upgrade failed"
+
+  # Authorize and sync signing keys
+  b2 account authorize "$BKEY_ID" "$BAPP_KEY" > /dev/null 2>&1 || failStage "B2 authorization failed"
+  mkdir -p vendor/lineage-priv/keys
+  b2 sync "b2://$BUCKET_NAME/keys" vendor/lineage-priv/keys > /dev/null 2>&1 || failStage "B2 sync failed"
+
+  # Deactivate the virtual environment
+  deactivate
+
+  # Re-enable verbose output
+  set -v
+
+  # Unset sensitive B2 variables from memory
+  unset BUCKET_NAME KEY_ENCRYPTION_PASSWORD BKEY_ID BAPP_KEY KEY_PASSWORD
+
+  # Create required signing config files if missing
+  if [ ! -f vendor/lineage-priv/keys/keys.mk ]; then
+    echo "PRODUCT_DEFAULT_DEV_CERTIFICATE := vendor/lineage-priv/keys/releasekey" > vendor/lineage-priv/keys/keys.mk
+  fi
+
+  if [ ! -f vendor/lineage-priv/keys/BUILD.bazel ]; then
+    cat <<EOF > vendor/lineage-priv/keys/BUILD.bazel
 filegroup(
     name = "android_certificate_directory",
     srcs = glob([
@@ -581,13 +594,14 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 EOF
+  fi
+
+else
+  echo "[WARNING] B2 credentials missing. Skipping signing key sync and setup."
 fi
 
 # Wait a short time to ensure all processes are settled.
 sleep 15
-
-# Disable verbose mode to reduce log clutter.
-set +v
 
 #######################################
 # 5. DEVICE & BUILD VARIANT SETUP
@@ -638,9 +652,6 @@ m bacon &
 BUILD_PID=$!
 monitorProgress "$BUILD_PID"
 waitForBuild "$BUILD_PID"
-
-# Re-enable verbose mode for final steps.
-set -v
 
 #######################################
 # 7. POST-BUILD PROCESSING & UPLOAD
