@@ -101,9 +101,10 @@ failStage() {
   local mode="$2"   # "from_wait" means deferred notification.
   fail_stage="$stage"
   local log_content
+
   if [ "$mode" == "from_wait" ]; then
     local start_line
-    start_line=$(grep -n -w -F "FAILED:" "$LOG_FILE" | head -n 1 | cut -d: -f1)
+    start_line=$(grep -n -F "FAILED:" "$LOG_FILE" 2>/dev/null | head -n 1 | cut -d: -f1)
     if [ -n "$start_line" ]; then
       log_content=$(sed -n "${start_line},\$p" "$LOG_FILE")
     else
@@ -112,19 +113,21 @@ failStage() {
   else
     log_content=$(tail -n 100 "$LOG_FILE")
   fi
+
   echo "$log_content" > err.log
   local log_url
-  log_url=$(upload_log "err.log" 2>&1)
+  log_url=$(upload_log "err.log" 2>&1) || log_url="(upload failed)"
+
   if [ "$mode" == "from_wait" ]; then
     echo "$log_url"
     return 0
   else
-    notifyMsg failed "$log_url"
+    # Pass progress first, log URL second — matches formatMsg "failed" mode expectations
+    local final_prog="${LAST_PROGRESS:-$(get_prog)}"
+    notifyMsg failed "$final_prog" "$log_url"
     exit 1
   fi
-  exit 1
 }
-
 
 # get_prog extracts the latest progress after the last "Starting ninja" line from LOG_FILE.
 get_prog() {
