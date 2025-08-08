@@ -509,13 +509,13 @@ set -v
 #######################################
 notifyStage "Defining build variables and environment..."
 
-PROJECT=${PROJECT:-LineageOS}
-PRODUCT_NAME=${PRODUCT_NAME:-lineage_RMX2001L1}
+PROJECT=${PROJECT:-PixelOS}
+PRODUCT_NAME=${PRODUCT_NAME:-aosp_RMX2001L1}
 DEVICE=${DEVICE:-RMX2001L1}
-BUILD_FLAVOR=${BUILD_FLAVOR:-gms}  # alternatives: gms or vanilla
-RELEASE_TYPE=${RELEASE_TYPE:-user}  # e.g., user build
-RELEASE_VERSION=${RELEASE_VERSION:-22.1}
-REPO_URL="-u https://github.com/accupara/los22.git -b lineage-22.1 --git-lfs"
+BUILD_FLAVOR=${BUILD_FLAVOR:-}  # alternatives: gms or vanilla
+RELEASE_TYPE=${RELEASE_TYPE:-userdebug}  # e.g., user build
+RELEASE_VERSION=${RELEASE_VERSION:-16}
+REPO_URL="-u https://github.com/pissel-os/manifest.git -b android-16 --git-lfs"
 
 # Export build system variables.
 export BUILD_USERNAME=user
@@ -534,23 +534,17 @@ if echo "$@" | grep resume >/dev/null; then
 else
     notifyStage "Repo syncing in progress..."
     repo init $REPO_URL || failStage "Repo init failed"
-    cleanup_self
+#    cleanup_self
     # Let's curl xmls before repo sync.
     # Ensure the local_manifests directory exists.
     mkdir -p .repo/local_manifests
 
     # Download the device tree manifest.
     curl -o .repo/local_manifests/roomservice.xml \
-         https://raw.githubusercontent.com/gopaldhanve2003/local_manifests/refs/heads/lineage-21.1/roomservice.xml || failStage "Failed to download Roomservice"
-    # Download the extra manifest for vendor extras.
-    curl -o .repo/local_manifests/extra.xml \
-         https://raw.githubusercontent.com/gopaldhanve2003/android_vendor_extra/refs/heads/main/extra.xml || failStage "Failed to download extra.xml"
-    # Repo sync.
+         https://raw.githubusercontent.com/gopaldhanve2003/local_manifests/refs/heads/sixteen-test/roomservice.xml || failStage "Failed to download Roomservice"
+   # Repo sync.
     /opt/crave/resync.sh || failStage "Repo sync failed"
 fi
-
-# Clone vendor_extra.
-git clone https://github.com/gopaldhanve2003/android_vendor_extra --depth 1 -b main vendor/extra
 
 # For proper post-syncing check each repo, if .gitattributes is present and contains "filter=lfs", install Git LFS, fetch LFS objects, and checkout the actual content.
 repo forall -c 'if [ -f .gitattributes ] && grep -q "filter=lfs" .gitattributes; then git lfs install && git lfs fetch && git lfs checkout; fi'
