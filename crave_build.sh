@@ -544,10 +544,8 @@ git clone https://github.com/gopaldhanve2003/android_vendor_extra --depth 1 -b m
 repo forall -c 'if [ -f .gitattributes ] && grep -q "filter=lfs" .gitattributes; then git lfs install && git lfs fetch && git lfs checkout; fi'
 
 #######################################
-# 4. SANITIZE CREDENTIALS AND SYNC KEYS FOR SIGNING
+# 4.SYNC KEYS FOR SIGNING
 #######################################
-grep -vE "BKEY_ID|BUCKET_NAME|KEY_ENCRYPTION_PASSWORD|BAPP_KEY|KEY_PASSWORD|TG_TOKEN|TG_CID" /tmp/crave_bashrc > /tmp/crave_bashrc.1
-mv /tmp/crave_bashrc.1 /tmp/crave_bashrc
 
 # Get keys from B2Bucket for signing.
 set +v
@@ -670,6 +668,11 @@ echo -e "Build finished at $SUCCESS_TIME (Total runtime: $TIME_TAKEN)"
 
 # Final Notification with outcome, progress, duration, and download link
 finalizeMsg "success" "$LAST_PROGRESS" "$TIME_TAKEN" "$GO_LINK"
+
+# Sanitize if exist
+[ -f /tmp/crave_bashrc ] && {
+	grep -vE "BKEY_ID|BUCKET_NAME|KEY_ENCRYPTION_PASSWORD|BAPP_KEY|KEY_PASSWORD|TG_TOKEN|TG_CID|NAME|MAIL" /tmp/crave_bashrc > /tmp/crave_bashrc.1
+mv /tmp/crave_bashrc.1 /tmp/crave_bashrc}
 
 # Pause briefly before exiting.
 sleep 60
