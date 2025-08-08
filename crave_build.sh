@@ -626,6 +626,11 @@ git config --global user.email "$MAIL" > /dev/null 2>&1
 # Unset git variables
 unset NAME MAIL
 
+# Temp revert the problematic commit from device/realme/RM6785-common
+cd "$ANDROID_BUILD_TOP/device/realme/RM6785-common" || failStage "Failed to cd into RM6785-common"
+git revert ec47e24e1921bb6aba6b37605b9fdb052cda645f --no-edit || failStage "Failed to revert commit ec47e24"
+cd "$ANDROID_BUILD_TOP"
+
 # If this is a GMS build, apply the necessary patches.
 if [[ "${BUILD_FLAVOR}" == "gms" ]]; then
     echo -e "GMS build selected: applying local patches..."
