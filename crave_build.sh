@@ -165,7 +165,7 @@ waitForBuild() {
 
   if [ $ec -ne 0 ]; then
     local log_url
-    log_url=$(failStage "from_wait" "from_wait")
+    log_url=$(failStage "build" "from_wait")
     finalizeMsg "failed" "$LAST_PROGRESS" "" "" "$log_url"
     exit 1
   fi
