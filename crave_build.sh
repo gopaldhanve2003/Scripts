@@ -223,8 +223,6 @@ cleanup_self () {
     rm -rf ~/.gitconfig
     rm -rf /home/admin/venv
 
-    rm -f goupload.sh
-    rm -f GOFILE.txt
     rm -f err.log
 }
 
@@ -676,9 +674,8 @@ if [ -z "$ZIP_FILE" ]; then
 fi
 
 # Download and execute the file upload script.
-curl -o goupload.sh -L https://raw.githubusercontent.com/Joe7500/Builds/refs/heads/main/crave/gofile.sh || failStage "Unable to download Upload script"
-bash goupload.sh "$ZIP_FILE" || failStage "Gofile upload failed"
-GO_LINK=$(cat GOFILE.txt)
+# Download and execute the new gofile upload script from GitHub
+DOWNLOAD_LINK=$(curl -sL https://raw.githubusercontent.com/gopaldhanve2003/Scripts/refs/heads/main/upload_gofile.sh | bash -s -- "$ZIP_FILE") || failStage "Gofile upload failed"
 
 #######################################
 # 8. FINAL NOTIFICATIONS & CLEANUP
@@ -690,7 +687,7 @@ SUCCESS_TIME=$(env TZ=Asia/Kolkata date)
 echo -e "Build finished at $SUCCESS_TIME (Total runtime: $TIME_TAKEN)"
 
 # Final Notification with outcome, progress, duration, and download link
-finalizeMsg "success" "$LAST_PROGRESS" "$TIME_TAKEN" "$GO_LINK"
+finalizeMsg "success" "$LAST_PROGRESS" "$TIME_TAKEN" "$DOWNLOAD_LINK"
 
 # Sanitize if exist
 [ -f /tmp/crave_bashrc ] && {
