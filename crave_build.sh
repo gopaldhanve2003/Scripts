@@ -7,12 +7,16 @@
 # buildHeader returns a common header based on ENV_DEFINED.
 buildHeader() {
   if [ "${ENV_DEFINED:-0}" = "1" ]; then
-    echo "<b>${PROJECT}-${RELEASE_VERSION}</b>
-Build started for ${DEVICE}
-Flavour: ${BUILD_FLAVOR} | Release: ${RELEASE_TYPE}"
+    echo "<b>${PROJECT}-${RELEASE_VERSION}</b>"
+    echo "Build started for ${DEVICE}"
+    if [ -n "${BUILD_FLAVOR}" ]; then
+      echo "Flavour: ${BUILD_FLAVOR} | Release: ${RELEASE_TYPE}"
+    else
+      echo "Release: ${RELEASE_TYPE}"
+    fi
   else
-    echo "<b>${PROJECT}-${RELEASE_VERSION}</b>
-Build started for ${DEVICE}"
+    echo "<b>${PROJECT}-${RELEASE_VERSION}</b>"
+    echo "Build started for ${DEVICE}"
   fi
 }
 
@@ -62,6 +66,11 @@ Status: <b>${final_prog}</b>. Log: ${log_url}"
 Status: <b>${stat}</b>"
       ;;
     *)
+    if [ -n "${BUILD_FLAVOR}" ]; then
+      echo "Flavour: ${BUILD_FLAVOR} | Release: ${RELEASE_TYPE}"
+    else
+      echo "Release: ${RELEASE_TYPE}"
+    fi
       echo "Error: Invalid mode in formatMsg" >&2
       return 1
       ;;
