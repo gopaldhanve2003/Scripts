@@ -205,18 +205,18 @@ finalizeMsg() {
 cleanup_self () {
     cd "$ANDROID_BUILD_TOP" || exit 1
 
-    rm -rf .repo/local_manifests
-    rm -rf device/realme/RMX2001L1
-    rm -rf device/realme/RMX2151L1
-    rm -rf device/realme/RM6785-common
-    rm -rf vendor/realme/RM6785-common
-    rm -rf kernel/realme/mt6785
-    rm -rf hardware/mediatek
-    rm -rf device/mediatek/sepolicy_vndr
+    if [ -d ".repo/local_manifests" ]; then
+        for manifest in .repo/local_manifests/*.xml; do
+            [ -f "$manifest" ] || continue
+            grep -oP '(?<=path=")[^"]+' "$manifest" | while read -r path; do
+                echo "Removing $path"
+                rm -rf "$path"
+            done
+        done
+        rm -rf .repo/local_manifests
+    fi
 
     rm -rf vendor/extra
-    rm -rf vendor/pixel
-    rm -rf packages/apps/FaceUnlock
 
     rm -rf vendor/lineage-priv
     rm -rf .config/b2/account_info
