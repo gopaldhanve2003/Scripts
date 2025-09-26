@@ -478,6 +478,11 @@ if [[ "${BUILD_FLAVOR}" == "gms" ]]; then
     apply_patches "$PWD/vendor/extra/patches" "m/lineage-23.0" || failStage "Local patches failed"
 fi
 
+## Repopick
+cd "$ANDROID_BUILD_TOP"
+# md3e patches
+./vendor/lineage/build/tools/repopick.py -t md3e-flags
+
 ## Unset Git username and email
 git config --global --unset user.name > /dev/null 2>&1
 git config --global --unset user.email > /dev/null 2>&1
