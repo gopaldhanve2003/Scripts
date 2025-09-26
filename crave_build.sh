@@ -373,8 +373,8 @@ set -v
 notifyStage "Defining build variables and environment..."
 
 PROJECT=${PROJECT:-LineageOS}
-PRODUCT_NAME=${PRODUCT_NAME:-lineage_RMX2001L1}
-DEVICE=${DEVICE:-RMX2001L1}
+PRODUCT_NAME=${PRODUCT_NAME:-lineage_nemo}
+DEVICE=${DEVICE:-nemo}
 BUILD_FLAVOR=${BUILD_FLAVOR:-gms}  # alternatives: gms or vanilla
 RELEASE_TYPE=${RELEASE_TYPE:-user}  # e.g., user build
 RELEASE_VERSION=${RELEASE_VERSION:-22.1}
