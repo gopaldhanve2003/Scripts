@@ -377,8 +377,8 @@ PRODUCT_NAME=${PRODUCT_NAME:-lineage_nemo}
 DEVICE=${DEVICE:-nemo}
 BUILD_FLAVOR=${BUILD_FLAVOR:-gms}  # alternatives: gms or vanilla
 RELEASE_TYPE=${RELEASE_TYPE:-user}  # e.g., user build
-RELEASE_VERSION=${RELEASE_VERSION:-22.1}
-REPO_URL="-u https://github.com/accupara/los22.git -b lineage-22.1 --git-lfs"
+RELEASE_VERSION=${RELEASE_VERSION:-23.0}
+REPO_URL="-u https://github.com/LineageOS/android.git -b lineage-23.0 --git-lfs"
 
 # Export build system variables.
 export BUILD_USERNAME=user
@@ -404,10 +404,10 @@ else
 
     # Download the device tree manifest.
     curl -o .repo/local_manifests/roomservice.xml \
-         https://raw.githubusercontent.com/gopaldhanve2003/local_manifests/refs/heads/lineage-21.1/roomservice.xml || failStage "Failed to download Roomservice"
+         https://raw.githubusercontent.com/gopaldhanve2003/local_manifests/refs/heads/lineage-23.0/roomservice.xml || failStage "Failed to download Roomservice"
     # Download the extra manifest for vendor extras.
     curl -o .repo/local_manifests/extra.xml \
-         https://raw.githubusercontent.com/gopaldhanve2003/android_vendor_extra/refs/heads/main/extra.xml || failStage "Failed to download extra.xml"
+         https://raw.githubusercontent.com/gopaldhanve2003/android_vendor_extra/refs/heads/lineage-23.0/extra.xml || failStage "Failed to download extra.xml"
     # Repo sync.
     /opt/crave/resync.sh || failStage "Repo sync failed"
 fi
@@ -475,7 +475,7 @@ unset NAME MAIL
 if [[ "${BUILD_FLAVOR}" == "gms" ]]; then
     echo -e "GMS build selected: applying local patches..."
     notifyStage "Applying local patches..."
-    apply_patches "$PWD/vendor/extra/patches" "m/lineage-22.1" || failStage "Local patches failed"
+    apply_patches "$PWD/vendor/extra/patches" "m/lineage-23.0" || failStage "Local patches failed"
 fi
 
 ## Unset Git username and email
