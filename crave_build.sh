@@ -445,28 +445,6 @@ if [ -n "$BKEY_ID" ] && [ -n "$BAPP_KEY" ] && [ -n "$BUCKET_NAME" ]; then
   # Unset sensitive B2 variables from memory
   unset BUCKET_NAME KEY_ENCRYPTION_PASSWORD BKEY_ID BAPP_KEY KEY_PASSWORD
 
-  # Create required signing config files if missing
-  if [ ! -f vendor/lineage-priv/keys/keys.mk ]; then
-    echo "PRODUCT_DEFAULT_DEV_CERTIFICATE := vendor/lineage-priv/keys/releasekey" > vendor/lineage-priv/keys/keys.mk
-  fi
-
-  if [ ! -f vendor/lineage-priv/keys/BUILD.bazel ]; then
-    cat <<EOF > vendor/lineage-priv/keys/BUILD.bazel
-filegroup(
-    name = "android_certificate_directory",
-    srcs = glob([
-        "*.pk8",
-        "*.pem",
-    ]),
-    visibility = ["//visibility:public"],
-)
-EOF
-  fi
-
-else
-  echo "[WARNING] B2 credentials missing. Skipping signing key sync and setup."
-fi
-
 # Wait a short time to ensure all processes are settled.
 sleep 15
 
