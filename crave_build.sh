@@ -449,6 +449,7 @@ if [ -n "$BKEY_ID" ] && [ -n "$BAPP_KEY" ] && [ -n "$BUCKET_NAME" ]; then
 
   # Unset sensitive B2 variables from memory
   unset BUCKET_NAME KEY_ENCRYPTION_PASSWORD BKEY_ID BAPP_KEY KEY_PASSWORD
+fi
 
 # Wait a short time to ensure all processes are settled.
 sleep 15
@@ -525,9 +526,10 @@ echo -e "Build finished at $SUCCESS_TIME (Total runtime: $TIME_TAKEN)"
 finalizeMsg "success" "$LAST_PROGRESS" "$TIME_TAKEN" "$DOWNLOAD_LINK"
 
 # Sanitize if exist
-[ -f /tmp/crave_bashrc ] && {
-	grep -vE "BKEY_ID|BUCKET_NAME|KEY_ENCRYPTION_PASSWORD|BAPP_KEY|KEY_PASSWORD|TG_TOKEN|TG_CID|NAME|MAIL" /tmp/crave_bashrc > /tmp/crave_bashrc.1
-mv /tmp/crave_bashrc.1 /tmp/crave_bashrc}
+if [ -f /tmp/crave_bashrc ]; then
+    grep -vE "BKEY_ID|BUCKET_NAME|KEY_ENCRYPTION_PASSWORD|BAPP_KEY|KEY_PASSWORD|TG_TOKEN|TG_CID|NAME|MAIL" /tmp/crave_bashrc > /tmp/crave_bashrc.1
+    mv /tmp/crave_bashrc.1 /tmp/crave_bashrc
+fi
 
 # Pause briefly before exiting.
 sleep 60
