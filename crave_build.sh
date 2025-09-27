@@ -131,8 +131,13 @@ failStage() {
     echo "$log_url"
     return 0
   else
-    # Pass progress first, log URL second — matches formatMsg "failed" mode expectations
-    local final_prog="${LAST_PROGRESS:-$(get_prog)}"
+    # Use LAST_PROGRESS if it contains a percentage, else fall back to fail_stage
+    local final_prog
+    if [[ -n "$LAST_PROGRESS" && "$LAST_PROGRESS" =~ [0-9]+% ]]; then
+        final_prog="$LAST_PROGRESS"
+    else
+        final_prog="$fail_stage"
+    fi
     notifyMsg failed "$final_prog" "$log_url"
     exit 1
   fi
