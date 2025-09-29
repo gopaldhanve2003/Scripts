@@ -483,6 +483,11 @@ cd "$ANDROID_BUILD_TOP"
 # md3e patches
 ./vendor/lineage/build/tools/repopick.py -t md3e-flags
 
+# temp patch
+sed -i 's/TARGET_2ND_ARCH_VARIANT := armv8-2a/TARGET_2ND_ARCH_VARIANT := armv8-a/' device/realme/nemo/BoardConfig.mk
+sed -i -e '$a CONFIG_GKI_HIDDEN_GPU_CONFIGS=y' \
+       -e '$a CONFIG_TRACE_GPU_MEM=y' kernel/realme/nemo/arch/arm64/configs/nemo_defconfig
+
 ## Unset Git username and email
 git config --global --unset user.name > /dev/null 2>&1
 git config --global --unset user.email > /dev/null 2>&1
