@@ -501,6 +501,8 @@ cd "$ANDROID_BUILD_TOP"
 source build/envsetup.sh || failStage "Env setup failed"
 breakfast "${DEVICE}" "$RELEASE_TYPE" || failStage "Breakfast failed"
 m installclean || failStage "Clean build failed"
+make nemo_defconfig
+m bootimage
 echo -e "Running m bacon for ${DEVICE}"
 notifyStage "Build started"
 # Run m bacon in background for progress monitoring.
