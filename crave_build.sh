@@ -19,7 +19,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Repo init
-repo init -u https://github.com/crdroidandroid/android.git -b 16.0 --git-lfs --no-clone-bundle
+repo init -u https://github.com/crdroidandroid/android.git -b 16.0 --git-lfs --no-clone-bundle --depth=1
 
 # Local manifests
 git clone --depth=1 https://github.com/gopaldhanve2003/local_manifests .repo/local_manifests
