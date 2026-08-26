@@ -54,12 +54,12 @@ fi
 
 # Build
 source build/envsetup.sh
-breakfast nemo user
+breakfast RM6785 user
 m installclean
 m bacon
 
 # Find and Upload build
-ZIP_FILE=$(find out/target/product/nemo \
+ZIP_FILE=$(find out/target/product/RM6785 \
     -maxdepth 1 \
     -type f \
     -iname "*.zip" \
