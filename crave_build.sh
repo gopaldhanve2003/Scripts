@@ -23,6 +23,7 @@ repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs 
 
 # Local manifests
 git clone --depth=1 https://github.com/gopaldhanve2003/local_manifests .repo/local_manifests
+curl -Lo .repo/local_manifests/extra.xml https://raw.githubusercontent.com/gopaldhanve2003/android_vendor_extra/refs/heads/lineage-23.2/extra.xml
 
 # Sync
 /opt/crave/resync.sh
