@@ -15,6 +15,10 @@ cleanup() {
     unset KEY_PASSWORD
     unset KEY_ENCRYPTION_PASSWORD
     unset GOFILE_TOKEN
+    unset TG_TOKEN
+    unset TG_CID
+    unset NAME
+    unset MAIL
 }
 trap cleanup EXIT INT TERM
 
