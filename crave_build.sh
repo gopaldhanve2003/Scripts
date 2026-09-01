@@ -57,6 +57,13 @@ if [ -n "${BKEY_ID:-}" ] && [ -n "${BAPP_KEY:-}" ] && [ -n "${BUCKET_NAME:-}" ];
   unset BUCKET_NAME KEY_ENCRYPTION_PASSWORD BKEY_ID BAPP_KEY KEY_PASSWORD
 fi
 
+# Temp patch
+grep -q '"date": Allowed,' build/soong/ui/build/paths/config.go || sed -i 's/var Configuration = map\[string\]PathConfig{/&\n\t"date": Allowed,/' build/soong/ui/build/paths/config.go
+grep -q '"tar": Allowed,' build/soong/ui/build/paths/config.go || sed -i 's/var Configuration = map\[string\]PathConfig{/&\n\t"tar": Allowed,/' build/soong/ui/build/paths/config.go
+grep -q '"grep": Allowed,' build/soong/ui/build/paths/config.go || sed -i 's/var Configuration = map\[string\]PathConfig{/&\n\t"grep": Allowed,/' build/soong/ui/build/paths/config.go
+grep -q '"flock": Allowed,' build/soong/ui/build/paths/config.go || sed -i 's/var Configuration = map\[string\]PathConfig{/&\n\t"flock": Allowed,/' build/soong/ui/build/paths/config.go
+grep -q '"awk": Allowed,' build/soong/ui/build/paths/config.go || sed -i 's/var Configuration = map\[string\]PathConfig{/&\n\t"awk": Allowed,/' build/soong/ui/build/paths/config.go
+
 # Build
 source build/envsetup.sh
 breakfast RM6785 userdebug
