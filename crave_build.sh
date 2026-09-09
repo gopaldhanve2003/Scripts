@@ -59,7 +59,7 @@ fi
 
 # Build
 source build/envsetup.sh
-breakfast RM6785 user
+breakfast RM6785 userdebug
 m installclean
 m bacon
 
