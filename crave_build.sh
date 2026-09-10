@@ -23,7 +23,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Repo init
-repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs --depth=1
+#repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs --depth=1
 
 # Local manifests
 git clone --depth=1 https://github.com/gopaldhanve2003/local_manifests .repo/local_manifests
