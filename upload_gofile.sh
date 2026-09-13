@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# upload_gofile.sh — Upload a ZIP file to gofile.io and print the download URL
+# upload_gofile.sh — Upload a file to gofile.io and print the download URL
 #
-# Usage: 
+# Usage:
 #   GOFILE_TOKEN="YOUR_TOKEN_HERE"
 #   ./upload_gofile.sh <file_path>
 #
@@ -28,11 +28,14 @@ if [[ -z "${GOFILE_TOKEN:-}" ]]; then
     exit 1
 fi
 
+# Get an upload server
+SERVER=$(curl -s -H "Authorization: Bearer ${GOFILE_TOKEN}" https://api.gofile.io/servers | jq -r '.data.servers[0].name')
+
 # Upload the file and extract download page URL
 DOWNLOAD_URL=$(curl --progress-bar -S \
   -H "Authorization: Bearer ${GOFILE_TOKEN}" \
   -F "file=@${FILE}" \
-  https://upload.gofile.io/uploadfile \
+  "https://${SERVER}.gofile.io/contents/uploadfile" \
   | jq -r '.data.downloadPage')
 
 if [[ "$DOWNLOAD_URL" == "null" || -z "$DOWNLOAD_URL" ]]; then
@@ -41,4 +44,3 @@ if [[ "$DOWNLOAD_URL" == "null" || -z "$DOWNLOAD_URL" ]]; then
 fi
 
 echo "$DOWNLOAD_URL"
-

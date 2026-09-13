@@ -82,10 +82,12 @@ if [[ -z "$ZIP_FILE" || ! -f "$ZIP_FILE" ]]; then
     exit 1
 fi
 
+SERVER=$(curl -s -H "Authorization: Bearer ${GOFILE_TOKEN}" https://api.gofile.io/servers | jq -r '.data.servers[0].name')
+
 DOWNLOAD_URL=$(curl --progress-bar -S \
     -H "Authorization: Bearer ${GOFILE_TOKEN}" \
     -F "file=@${ZIP_FILE}" \
-    https://upload.gofile.io/uploadfile \
+    "https://${SERVER}.gofile.io/contents/uploadfile" \
     | jq -r '.data.downloadPage')
 if [[ "$DOWNLOAD_URL" == "null" || -z "$DOWNLOAD_URL" ]]; then
     echo "Error: Upload failed or no download URL returned."
