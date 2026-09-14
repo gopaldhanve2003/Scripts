@@ -66,12 +66,12 @@ grep -q '"awk": Allowed,' build/soong/ui/build/paths/config.go || sed -i 's/var 
 
 # Build
 source build/envsetup.sh
-breakfast RM6785 userdebug
+breakfast nemo userdebug
 m installclean
 m bacon
 
 # Find and Upload build
-ZIP_FILE=$(find out/target/product/RM6785 \
+ZIP_FILE=$(find out/target/product/nemo \
     -maxdepth 1 \
     -type f \
     -iname "*.zip" \
