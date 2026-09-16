@@ -19,6 +19,7 @@ cleanup() {
     unset TG_CID
     unset NAME
     unset MAIL
+    unset DOWNLOAD_URL
 }
 trap cleanup EXIT INT TERM
 
