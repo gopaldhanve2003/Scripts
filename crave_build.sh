@@ -67,7 +67,7 @@ grep -q '"awk": Allowed,' build/soong/ui/build/paths/config.go || sed -i 's/var 
 
 # Build
 source build/envsetup.sh
-breakfast nemo userdebug
+breakfast nemo user
 m installclean
 m bacon
 
