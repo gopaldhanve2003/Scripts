@@ -5,6 +5,7 @@ set -o pipefail
 cleanup() {
     rm -rf .repo/local_manifests
     rm -rf vendor/lineage-priv
+    rm -rf lineage_OTA
     rm -rf ~/.config/b2
     rm -rf /home/admin/venv
     rm -rf ~/.gitconfig
@@ -15,6 +16,7 @@ cleanup() {
     unset KEY_PASSWORD
     unset KEY_ENCRYPTION_PASSWORD
     unset GOFILE_TOKEN
+    unset GITHUB_TOKEN
     unset TG_TOKEN
     unset TG_CID
     unset NAME
@@ -69,31 +71,9 @@ grep -q '"awk": Allowed,' build/soong/ui/build/paths/config.go || sed -i 's/var 
 source build/envsetup.sh
 breakfast nemo user
 m installclean
-m bacon
+m bacon || exit 1 
 
-# Find and Upload build
-ZIP_FILE=$(find out/target/product/nemo \
-    -maxdepth 1 \
-    -type f \
-    -iname "*.zip" \
-    ! -iname "*ota*.zip" \
-    -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2-)
-if [[ -z "$ZIP_FILE" || ! -f "$ZIP_FILE" ]]; then
-    echo "Error: No ROM zip found!"
-    exit 1
-fi
+export RELEASE_IMAGES="recoveryimage"
+release nemo
 
-RESPONSE=$(curl --silent --show-error \
-    -H "Authorization: Bearer ${GOFILE_TOKEN}" \
-    -F "file=@${ZIP_FILE}" \
-    https://upload.gofile.io/uploadfile)
-
-DOWNLOAD_URL=$(jq -r '.data.downloadPage // empty' <<< "$RESPONSE")
-if [[ -z "$DOWNLOAD_URL" ]]; then
-    echo "Error: Upload failed or no download URL returned."
-    echo "$RESPONSE"
-    exit 1
-fi
-echo "$DOWNLOAD_URL"
-
-exit 0
+exit $?
