@@ -26,11 +26,11 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Repo init
-repo init -u https://github.com/LineageOS/android.git -b lineage-24.0 --git-lfs --depth=1
+repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs --depth=1
 
 # Local manifests
 git clone --depth=1 https://github.com/gopaldhanve2003/local_manifests .repo/local_manifests
-curl -Lo .repo/local_manifests/extra.xml https://raw.githubusercontent.com/gopaldhanve2003/android_vendor_extra/refs/heads/lineage-24.0/extra.xml
+curl -Lo .repo/local_manifests/extra.xml https://raw.githubusercontent.com/gopaldhanve2003/android_vendor_extra/refs/heads/lineage-23.2/extra.xml
 
 # Sync
 /opt/crave/resync.sh
